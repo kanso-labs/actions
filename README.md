@@ -25,7 +25,7 @@ does for every other action these repositories pin.
 
 ```yaml
 - name: Set up Node
-  uses: kanso-labs/github-actions/setup-node@v4.0.0
+  uses: kanso-labs/actions/setup-node@v4.0.0
 ```
 
 ```yaml
@@ -36,7 +36,7 @@ concurrency:
 jobs:
   release-please:
     name: Propose releases
-    uses: kanso-labs/github-actions/.github/workflows/_release-please.yaml@v4.0.0
+    uses: kanso-labs/actions/.github/workflows/_release-please.yaml@v4.0.0
     secrets:
       client-id: ${{ secrets.RELEASE_PLEASE_CLIENT_ID }}
       private-key: ${{ secrets.RELEASE_PLEASE_PRIVATE_KEY }}
@@ -109,7 +109,7 @@ publish:
     contents: read
     id-token: write
     packages: write
-  uses: kanso-labs/github-actions/.github/workflows/_publish-npm.yaml@v4.0.0
+  uses: kanso-labs/actions/.github/workflows/_publish-npm.yaml@v4.0.0
 ```
 
 Compare `release_created` against the string. A bare truthiness test also passes
@@ -392,7 +392,7 @@ on:
 jobs:
   release-please:
     name: Propose releases
-    uses: kanso-labs/github-actions/.github/workflows/_release-please.yaml@v4.0.0
+    uses: kanso-labs/actions/.github/workflows/_release-please.yaml@v4.0.0
     with:
       auto-merge: ${{ github.event_name == 'schedule' }}
     secrets:
@@ -463,7 +463,7 @@ permissions: {}
 jobs:
   renovate-command:
     name: Run the command
-    uses: kanso-labs/github-actions/.github/workflows/_renovate-command.yaml@v4.0.0
+    uses: kanso-labs/actions/.github/workflows/_renovate-command.yaml@v4.0.0
     secrets:
       client-id: ${{ secrets.RENOVATE_CLIENT_ID }}
       private-key: ${{ secrets.RENOVATE_APP_PRIVATE_KEY }}
