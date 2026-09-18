@@ -1,4 +1,4 @@
-# `actions/upstream-changelog`
+# `upstream-changelog`
 
 Rewrites a Renovate pull request body so that the release notes of the
 dependency it updates reach the changelog release-please writes at merge time.
@@ -51,7 +51,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Carry the upstream release notes
-        uses: kanso-labs/github-actions/actions/upstream-changelog@v3.3.0
+        uses: kanso-labs/github-actions/upstream-changelog@v4.0.0
 ```
 
 The consuming repository also has to give `commit-type` a section of its own in

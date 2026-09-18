@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 jobs:
-  # actions/upstream-changelog is the only thing here with enough logic of its
+  # upstream-changelog is the only thing here with enough logic of its
   # own to be worth unit testing, and the only one that cannot be smoke tested
   # the way the other two composite actions are: a live run needs an open
   # Renovate pull request carrying release notes, which exists in a consumer
@@ -26,7 +26,7 @@ jobs:
         uses: actions/checkout@v7.0.1
 
       - name: Set up Node
-        uses: ./actions/setup-node
+        uses: ./setup-node
 
       - name: Run the unit tests
         run: npm test

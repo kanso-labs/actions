@@ -9,7 +9,7 @@ through shellcheck — the shell inside every `run:` block.
   uses: actions/checkout@v7.0.1
 
 - name: Lint workflows
-  uses: kanso-labs/github-actions/actions/lint-workflows@v2.1.0
+  uses: kanso-labs/github-actions/lint-workflows@v4.0.0
 ```
 
 Checking out is the caller's job, the same way it is for
