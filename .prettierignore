@@ -1,2 +1,8 @@
 CHANGELOG.md
+
+# The organization's licence, byte-identical across every repository. Both
+# formatters accept it as it stands, but reformatting it here would break that
+# equality the moment either one changes its mind about Markdown.
+LICENSE.md
+
 package-lock.json

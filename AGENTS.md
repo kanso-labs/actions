@@ -35,7 +35,9 @@ for what CI does and does not cover.
 
 ## Conventions
 
-Shared with the other `kanso-labs` repositories:
+Shared with the other `kanso-labs` repositories. The canonical text is
+[`CONVENTIONS.md`](https://github.com/kanso-labs/.github/blob/main/CONVENTIONS.md)
+in `kanso-labs/.github`; this is a copy, and `Lint` checks it against that file.
 
 - **Keys in JSON and YAML are ordered by name.** Files whose order carries
   meaning are exempt: workflows, where step order is execution order;
@@ -47,7 +49,11 @@ Shared with the other `kanso-labs` repositories:
 - **Job names and step names are imperative verb phrases.** Job ids, step ids,
   and matrix keys are exempt.
 - **Actions are pinned to exact release tags**, `actions/checkout@v7.0.1`, never
-  a moving major or `@main`. Renovate opens the bump pull requests.
+  `@main` and never a tag the publisher moves — `@v7` and `@v7.0` both move.
+  Renovate opens the bump pull requests, and it has nothing to open when the pin
+  never changes: `frenck/action-app-linter@v2.21` sat still through a repository
+  rename and a release that fixed something a consumer was working around,
+  because the tag it named was moved onto both.
 - **Dependency versions are pinned exactly.** Every `dependencies`,
   `devDependencies`, and `optionalDependencies` entry is a bare version,
   `1.2.3`, never `^1.2.3`, `~1.2.3`, `>=1.2.3`, `*`, `1.x`, or an `||` union.
@@ -55,7 +61,7 @@ Shared with the other `kanso-labs` repositories:
   exception: they state what the consumer's own installed copy must satisfy, so
   ranges are correct there and stay.
 - **`.tool-versions` pins a fully-specified version on every line**,
-  `nodejs 24.21.0`, never `nodejs 24` or `nodejs lts`.
+  `nodejs <major>.<minor>.<patch>`, never `nodejs 24` or `nodejs lts`.
 
 That last one has more reach from here than it does anywhere else:
 `actions/setup-node` defaults `node-version-file` to `.tool-versions`, here and
@@ -63,10 +69,13 @@ in every consumer, so that file is what a run actually resolves.
 
 Formatting is not shared, and assuming it is will send you to a command that
 does not exist. **Prettier formats the YAML, JSON and Markdown here**, and CI
-checks it — run `npm run format` before pushing. The siblings do not agree with
-each other or with this repository, and a roster of what each one runs belongs
-in each one rather than here. Read the Commands section of whichever repository
-you are actually in before reaching for a formatting command.
+checks it — run `npm run format` before pushing. `LICENSE.md` is exempt in
+`.prettierignore`: it is the organization's licence, byte-identical in every
+repository, and reformatting it here would break that the moment one formatter
+changes its mind about Markdown. The siblings do not agree with each other or
+with this repository, and a roster of what each one runs belongs in each one
+rather than here. Read the Commands section of whichever repository you are
+actually in before reaching for a formatting command.
 
 ## Versioning
 
