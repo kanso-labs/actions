@@ -51,7 +51,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Carry the upstream release notes
-        uses: kanso-labs/github-actions/upstream-changelog@v4.0.0
+        uses: kanso-labs/actions/upstream-changelog@v4.0.0
 ```
 
 The consuming repository also has to give `commit-type` a section of its own in
