@@ -39,6 +39,8 @@ Shared with the other `kanso-labs` repositories. The canonical text is
 [`CONVENTIONS.md`](https://github.com/kanso-labs/.github/blob/main/CONVENTIONS.md)
 in `kanso-labs/.github`; this is a copy, and `Lint` checks it against that file.
 
+<!-- shared-conventions:start -->
+
 - **Keys in JSON and YAML are ordered by name.** Files whose order carries
   meaning are exempt: workflows, where step order is execution order;
   changelogs, which are chronological; and `package.json`, where the npm
@@ -62,6 +64,8 @@ in `kanso-labs/.github`; this is a copy, and `Lint` checks it against that file.
   ranges are correct there and stay.
 - **`.tool-versions` pins a fully-specified version on every line**,
   `nodejs <major>.<minor>.<patch>`, never `nodejs 24` or `nodejs lts`.
+
+<!-- shared-conventions:end -->
 
 That last one has more reach from here than it does anywhere else:
 `actions/setup-node` defaults `node-version-file` to `.tool-versions`, here and

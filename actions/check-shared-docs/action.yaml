@@ -1,0 +1,43 @@
+name: Check shared docs
+description:
+  Asserts a repository still agrees with the organization's shared documentation
+  — that its AGENTS.md conventions block matches the canonical text, that it has
+  not reintroduced a community health file GitHub serves as a default, and that
+  its licence is the organization's.
+
+inputs:
+  allow-local:
+    default: ''
+    description:
+      Community health files this repository overrides on purpose, space
+      separated, as bare filenames. An override is legitimate — a repository
+      whose bug reports need fields the generic form does not ask for keeps its
+      own ISSUE_TEMPLATE — but it is invisible in the tree, so naming it here is
+      what separates a decision from an accident. Anything not named fails.
+    required: false
+  canonical-ref:
+    default: main
+    description:
+      Ref of kanso-labs/.github to compare against. Tracks main, because the
+      canonical text has no releases and a stale pin would let the copies drift
+      while the check stayed green.
+    required: false
+
+runs:
+  using: composite
+  steps:
+    # Checking out the caller is the caller's job, as it is for setup-node and
+    # lint-workflows. Only the canonical copy is fetched here, into a path the
+    # caller's own tree cannot collide with.
+    - name: Check out the canonical documentation
+      uses: actions/checkout@v7.0.1
+      with:
+        path: .canonical-docs
+        ref: ${{ inputs.canonical-ref }}
+        repository: kanso-labs/.github
+
+    - name: Compare against the canonical documentation
+      env:
+        ALLOW_LOCAL: ${{ inputs.allow-local }}
+      run: ${{ github.action_path }}/check.sh
+      shell: bash

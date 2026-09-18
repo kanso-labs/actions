@@ -27,6 +27,13 @@ jobs:
       - name: Run actionlint
         uses: ./actions/lint-workflows
 
+      # Also the smoke test for actions/check-shared-docs, the same way
+      # Check formatting is the one for setup-node. This repository is a
+      # consumer of its own action, so a change that breaks it fails here
+      # rather than in whichever repository next pins a new version.
+      - name: Check the shared documentation
+        uses: ./actions/check-shared-docs
+
   # This job is also the smoke test for actions/setup-node. It is the only
   # place in this repository that runs it, and a change breaking the action
   # fails here rather than in whichever repository next pins a new version.
