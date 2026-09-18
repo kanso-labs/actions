@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.3.2](https://github.com/kanso-labs/github-actions/compare/v3.3.1...v3.3.2) (2026-09-18)
+
+
+### Dependencies
+
+* update dependency prettier to v3.9.8 ([#60](https://github.com/kanso-labs/github-actions/issues/60)) ([e251164](https://github.com/kanso-labs/github-actions/commit/e251164ce6cbda57390a46dc7f81a3ad564d330f))
+
 ## [3.3.1](https://github.com/kanso-labs/github-actions/compare/v3.3.0...v3.3.1) (2026-09-16)
 
 
