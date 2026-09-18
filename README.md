@@ -11,9 +11,9 @@ them to consume these. A private consumer would need
 
 | Thing                                                                | Kind              | Solves                                                                        |
 | -------------------------------------------------------------------- | ----------------- | ----------------------------------------------------------------------------- |
-| [`actions/lint-workflows`](actions/lint-workflows)                   | Composite action  | Running actionlint, pinned, in every repository that has workflows            |
-| [`actions/setup-node`](actions/setup-node)                           | Composite action  | The Node setup preamble repeated in every Node CI job                         |
-| [`actions/upstream-changelog`](actions/upstream-changelog)           | Composite action  | Getting an updated dependency's own release notes into a consumer's changelog |
+| [`lint-workflows`](lint-workflows)                                   | Composite action  | Running actionlint, pinned, in every repository that has workflows            |
+| [`setup-node`](setup-node)                                           | Composite action  | The Node setup preamble repeated in every Node CI job                         |
+| [`upstream-changelog`](upstream-changelog)                           | Composite action  | Getting an updated dependency's own release notes into a consumer's changelog |
 | [`_publish-npm.yaml`](.github/workflows/_publish-npm.yaml)           | Reusable workflow | Publishing a package to npm and to GitHub Packages, after a release is cut    |
 | [`_release-please.yaml`](.github/workflows/_release-please.yaml)     | Reusable workflow | Proposing releases, with a token whose pull requests run CI                   |
 | [`_renovate-command.yaml`](.github/workflows/_renovate-command.yaml) | Reusable workflow | Answering `@renovate rebase` on a pull request, the way Dependabot does       |
@@ -25,7 +25,7 @@ does for every other action these repositories pin.
 
 ```yaml
 - name: Set up Node
-  uses: kanso-labs/github-actions/actions/setup-node@v2.0.0
+  uses: kanso-labs/github-actions/setup-node@v4.0.0
 ```
 
 ```yaml
@@ -36,7 +36,7 @@ concurrency:
 jobs:
   release-please:
     name: Propose releases
-    uses: kanso-labs/github-actions/.github/workflows/_release-please.yaml@v2.0.0
+    uses: kanso-labs/github-actions/.github/workflows/_release-please.yaml@v4.0.0
     secrets:
       client-id: ${{ secrets.RELEASE_PLEASE_CLIENT_ID }}
       private-key: ${{ secrets.RELEASE_PLEASE_PRIVATE_KEY }}
@@ -48,19 +48,19 @@ Tracking `@main` instead would mean a mistake here breaks CI in every consuming
 repository at once, with no way to hold one back. That is the whole reason for
 the tags.
 
-## `actions/setup-node`
+## `setup-node`
 
 Reads the Node version from `.tool-versions`, restores the npm cache, and runs
-`npm ci`. Full inputs are in [its README](actions/setup-node/README.md).
+`npm ci`. Full inputs are in [its README](setup-node/README.md).
 
 The npm cache comes from `actions/setup-node`'s own `cache: npm`, which is why
 consumers do not need a separate `actions/cache` step for `~/.npm`. Any such
 step left behind is doing nothing.
 
-## `actions/lint-workflows`
+## `lint-workflows`
 
 Runs actionlint over `.github/workflows`, at a pinned version. Full inputs are
-in [its README](actions/lint-workflows/README.md).
+in [its README](lint-workflows/README.md).
 
 Put it in the job a ruleset already requires rather than in a job of its own. A
 new job means a new check name, and a check name nothing requires can fail
@@ -77,13 +77,13 @@ is perfectly correct — `code-quality`, which `actions/upload-code-coverage`
 requires. The action passes an `-ignore` for exactly that message, and retires
 it when the pin moves.
 
-## `actions/upstream-changelog`
+## `upstream-changelog`
 
 Rewrites a Renovate pull request body so that the release notes of the
 dependency it updates reach the changelog release-please writes at merge time —
 turning a release that says `update dependency nzbgetcom/nzbget to v26.3` into
 one that lists what nzbget actually changed. Full inputs and the mechanism are
-in [its README](actions/upstream-changelog/README.md).
+in [its README](upstream-changelog/README.md).
 
 It is worth having wherever the dependency _is_ the product: a repository
 packaging somebody else's application, where "what changed" means what changed
@@ -109,7 +109,7 @@ publish:
     contents: read
     id-token: write
     packages: write
-  uses: kanso-labs/github-actions/.github/workflows/_publish-npm.yaml@v3.0.0
+  uses: kanso-labs/github-actions/.github/workflows/_publish-npm.yaml@v4.0.0
 ```
 
 Compare `release_created` against the string. A bare truthiness test also passes
@@ -257,7 +257,7 @@ There is no input for the GitHub Packages **scope**. That registry accepts only
 the owning organization's, so it is always `github.repository_owner` — which,
 inside a called workflow, is the caller's owner and not this repository's.
 
-### It inlines the Node setup rather than calling `actions/setup-node`
+### It inlines the Node setup rather than calling `setup-node`
 
 Deliberately, and it is the one duplication here that should stay.
 
@@ -392,7 +392,7 @@ on:
 jobs:
   release-please:
     name: Propose releases
-    uses: kanso-labs/github-actions/.github/workflows/_release-please.yaml@v3.2.0
+    uses: kanso-labs/github-actions/.github/workflows/_release-please.yaml@v4.0.0
     with:
       auto-merge: ${{ github.event_name == 'schedule' }}
     secrets:
@@ -463,7 +463,7 @@ permissions: {}
 jobs:
   renovate-command:
     name: Run the command
-    uses: kanso-labs/github-actions/.github/workflows/_renovate-command.yaml@v2.0.0
+    uses: kanso-labs/github-actions/.github/workflows/_renovate-command.yaml@v4.0.0
     secrets:
       client-id: ${{ secrets.RENOVATE_CLIENT_ID }}
       private-key: ${{ secrets.RENOVATE_APP_PRIVATE_KEY }}

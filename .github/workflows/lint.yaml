@@ -12,8 +12,8 @@ permissions:
   contents: read
 
 jobs:
-  # Also the smoke test for actions/lint-workflows, the same way check-formatting
-  # below is the one for actions/setup-node. It is the only place in this
+  # Also the smoke test for lint-workflows, the same way check-formatting
+  # below is the one for setup-node. It is the only place in this
   # repository that runs it, so a change breaking the action fails here rather
   # than in whichever repository next pins a new version. Do not "tidy" it into
   # a plain raven-actions/actionlint step.
@@ -25,9 +25,9 @@ jobs:
         uses: actions/checkout@v7.0.1
 
       - name: Run actionlint
-        uses: ./actions/lint-workflows
+        uses: ./lint-workflows
 
-  # This job is also the smoke test for actions/setup-node. It is the only
+  # This job is also the smoke test for setup-node. It is the only
   # place in this repository that runs it, and a change breaking the action
   # fails here rather than in whichever repository next pins a new version.
   check-formatting:
@@ -38,7 +38,7 @@ jobs:
         uses: actions/checkout@v7.0.1
 
       - name: Set up Node
-        uses: ./actions/setup-node
+        uses: ./setup-node
 
       - name: Check formatting
         run: npm run lint

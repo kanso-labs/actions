@@ -8,7 +8,7 @@ installs dependencies from the lockfile.
   uses: actions/checkout@v7.0.1
 
 - name: Set up Node
-  uses: kanso-labs/github-actions/actions/setup-node@v1.0.0
+  uses: kanso-labs/github-actions/setup-node@v4.0.0
 ```
 
 Checking out is the caller's job. Jobs need different checkouts — Chromatic

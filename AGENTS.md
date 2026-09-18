@@ -64,9 +64,9 @@ first, then every copy.
 - **`.tool-versions` pins a fully-specified version on every line**,
   `nodejs <major>.<minor>.<patch>`, never `nodejs 24` or `nodejs lts`.
 
-That last one has more reach from here than it does anywhere else:
-`actions/setup-node` defaults `node-version-file` to `.tool-versions`, here and
-in every consumer, so that file is what a run actually resolves.
+That last one has more reach from here than it does anywhere else: `setup-node`
+defaults `node-version-file` to `.tool-versions`, here and in every consumer, so
+that file is what a run actually resolves.
 
 Formatting is not shared, and assuming it is will send you to a command that
 does not exist. **Prettier formats the YAML, JSON and Markdown here**, and CI
@@ -157,17 +157,17 @@ installs, dropping platform entries a Linux runner needs.
 
 **Two of the three composite actions have a live smoke test**, in
 [`lint.yaml`](.github/workflows/lint.yaml): `check-formatting` calls
-`./actions/setup-node` and `lint-workflows` calls `./actions/lint-workflows`, so
-a change that breaks either fails on the pull request rather than in whichever
-repository next bumps its pin. Those are the only jobs in this repository that
-exercise them — keep them that way round, and do not "tidy" either into a plain
+`./setup-node` and `lint-workflows` calls `./lint-workflows`, so a change that
+breaks either fails on the pull request rather than in whichever repository next
+bumps its pin. Those are the only jobs in this repository that exercise them —
+keep them that way round, and do not "tidy" either into a plain
 `actions/setup-node` or `raven-actions/actionlint` step.
 
 A local `./` reference is safe there and is not safe inside a reusable workflow;
 see the trap below before copying the pattern into one.
 
-**`actions/upstream-changelog` has unit tests instead, and the difference is not
-a preference.** A live run of it needs an open Renovate pull request carrying
+**`upstream-changelog` has unit tests instead, and the difference is not a
+preference.** A live run of it needs an open Renovate pull request carrying
 release notes, which exists in a consumer and never here. `Run the unit tests`
 in [`test.yaml`](.github/workflows/test.yaml) covers the parsing and the
 rewriting against a body in Renovate's own layout, which is where every bug it
@@ -176,10 +176,9 @@ has had so far lived.
 What no test here covers is release-please agreeing: that the block parses, that
 the lines land under the right package, and that the bump stays a patch. That
 needs release-please itself, and the recipe is in
-[the action's README](actions/upstream-changelog/README.md). Run it when you
-change what the block looks like, rather than trusting the unit tests, because
-they assert the shape this repository decided on and not the shape
-release-please accepts.
+[the action's README](upstream-changelog/README.md). Run it when you change what
+the block looks like, rather than trusting the unit tests, because they assert
+the shape this repository decided on and not the shape release-please accepts.
 
 **The reusable workflow has one too, in dry-run.** `Dry run release-please` in
 [`test.yaml`](.github/workflows/test.yaml) calls
@@ -309,12 +308,12 @@ copying it to a job-level `env` first and testing `env.X != ''`, which is what
 works precisely because the skipped step yields `''`.
 
 **A `./` reference inside a reusable workflow does not mean what it means in an
-ordinary one.** In `lint.yaml`, `./actions/setup-node` resolves against this
-repository and is the documented way to reference a sibling action. Inside a
-workflow called through `workflow_call`, the same string resolves against the
-checkout sitting in the workspace — and that checkout belongs to the _caller_,
-so it would look for the action in the consuming repository and not find it.
-GitHub documents `./` for referencing a workflow in the same repository and says
+ordinary one.** In `lint.yaml`, `./setup-node` resolves against this repository
+and is the documented way to reference a sibling action. Inside a workflow
+called through `workflow_call`, the same string resolves against the checkout
+sitting in the workspace — and that checkout belongs to the _caller_, so it
+would look for the action in the consuming repository and not find it. GitHub
+documents `./` for referencing a workflow in the same repository and says
 nothing either way about an action referenced from inside a called workflow.
 That is why `_publish-npm.yaml` inlines `actions/setup-node@v7.0.0` and its
 `npm ci` rather than calling the composite next door. Do not "de-duplicate" it.

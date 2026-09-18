@@ -26,10 +26,10 @@
     },
     {
       "automerge": false,
-      "description": "actions/lint-workflows carries an -ignore for actionlint's stale report of the code-quality permission scope. The bump that makes it unnecessary is the only moment anybody will think to remove it, so the reminder rides in that pull request rather than sitting in a file nobody reads. This rule follows the automerge one so it wins: the pin moves rarely and the pull request is there to be read.",
+      "description": "lint-workflows carries an -ignore for actionlint's stale report of the code-quality permission scope. The bump that makes it unnecessary is the only moment anybody will think to remove it, so the reminder rides in that pull request rather than sitting in a file nobody reads. This rule follows the automerge one so it wins: the pin moves rarely and the pull request is there to be read.",
       "matchPackageNames": ["rhysd/actionlint"],
       "prBodyNotes": [
-        "Check whether this release makes `actions/lint-workflows`'s `-ignore` flag redundant: look for `code-quality` in `rule_permissions.go` at this tag, or lint a workflow granting the scope with this release and see it pass. If it does, delete the `flags:` line and its comment from `actions/lint-workflows/action.yaml`, this rule from `.github/renovate.json`, and the built-in-ignore paragraph from `actions/lint-workflows/README.md`."
+        "Check whether this release makes `lint-workflows`'s `-ignore` flag redundant: look for `code-quality` in `rule_permissions.go` at this tag, or lint a workflow granting the scope with this release and see it pass. If it does, delete the `flags:` line and its comment from `lint-workflows/action.yaml`, this rule from `.github/renovate.json`, and the built-in-ignore paragraph from `lint-workflows/README.md`."
       ]
     }
   ],
