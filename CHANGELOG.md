@@ -1,5 +1,16 @@
 # Changelog
 
+## [4.0.0](https://github.com/kanso-labs/github-actions/compare/v3.3.2...v4.0.0) (2026-09-18)
+
+
+### ⚠ BREAKING CHANGES
+
+* move the composite actions to the repository root ([#66](https://github.com/kanso-labs/github-actions/issues/66))
+
+### Features
+
+* move the composite actions to the repository root ([#66](https://github.com/kanso-labs/github-actions/issues/66)) ([4b0837e](https://github.com/kanso-labs/github-actions/commit/4b0837e4470d0bcb3d007831eef4394188493acf))
+
 ## [3.3.2](https://github.com/kanso-labs/github-actions/compare/v3.3.1...v3.3.2) (2026-09-18)
 
 
