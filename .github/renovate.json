@@ -17,15 +17,6 @@
   "minimumReleaseAge": null,
   "packageRules": [
     {
-      "description": "Renovate's own config:recommended sets semanticCommitType through a packageRule, and packageRules beat top-level config. Setting it at the top level therefore does nothing at all: every upgrade stays chore and cuts no release.",
-      "matchPackageNames": ["*"],
-      "semanticCommitType": "deps"
-    },
-    {
-      "automerge": true,
-      "matchUpdateTypes": ["minor", "patch"]
-    },
-    {
       "automerge": false,
       "description": "lint-workflows carries an -ignore for actionlint's stale report of the code-quality permission scope. The bump that makes it unnecessary is the only moment anybody will think to remove it, so the reminder rides in that pull request rather than sitting in a file nobody reads. This rule follows the automerge one so it wins: the pin moves rarely and the pull request is there to be read.",
       "matchPackageNames": ["rhysd/actionlint"],
@@ -33,11 +24,5 @@
         "Check whether this release makes `lint-workflows`'s `-ignore` flag redundant: look for `code-quality` in `rule_permissions.go` at this tag, or lint a workflow granting the scope with this release and see it pass. If it does, delete the `flags:` line and its comment from `lint-workflows/action.yaml`, this rule from `.github/renovate.json`, and the built-in-ignore paragraph from `lint-workflows/README.md`."
       ]
     }
-  ],
-  "prConcurrentLimit": 0,
-  "prHourlyLimit": 0,
-  "rebaseWhen": "behind-base-branch",
-  "recreateWhen": "always",
-  "semanticCommitScope": null,
-  "semanticCommits": "enabled"
+  ]
 }
