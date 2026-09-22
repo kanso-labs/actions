@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.0.1](https://github.com/kanso-labs/actions/compare/v4.0.0...v4.0.1) (2026-09-22)
+
+
+### Continuous Integration
+
+* extend the shared Renovate preset ([#69](https://github.com/kanso-labs/actions/issues/69)) ([5866ef2](https://github.com/kanso-labs/actions/commit/5866ef2a117dc072019958590da0564b98865226))
+
 ## [4.0.0](https://github.com/kanso-labs/github-actions/compare/v3.3.2...v4.0.0) (2026-09-18)
 
 
