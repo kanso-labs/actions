@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.1.0](https://github.com/kanso-labs/actions/compare/v4.0.2...v4.1.0) (2026-10-01)
+
+
+### Features
+
+* auto-merge Dependabot's minor and patch pull requests ([#74](https://github.com/kanso-labs/actions/issues/74)) ([e02ebcc](https://github.com/kanso-labs/actions/commit/e02ebccb420f632f1d82e01d9195ccb790ee877b))
+
 ## [4.0.2](https://github.com/kanso-labs/actions/compare/v4.0.1...v4.0.2) (2026-09-23)
 
 
