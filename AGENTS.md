@@ -234,6 +234,17 @@ all — all deliberate, so that a stranger's typo does not put a red X on a pull
 request. Read what the run logged and check the reaction that landed on the
 comment, rather than its colour.
 
+`_dependabot-auto-merge` cannot be canaried from a branch either, for the same
+reason in a different shape. A Dependabot pull request runs the workflows its
+merge ref holds, which are the consumer's default branch's copies, so the caller
+has to be merged there first with its `uses:` ref pointed at the branch here,
+exactly as README.md describes for adopting it. The pull request to try it on is
+any open one Dependabot owns: comment `@dependabot rebase` on it, which is an
+event Dependabot itself causes. **A green run is not evidence here either** —
+the job passes when it leaves a major update for a person and schedules nothing.
+Read the run's notice, and check that the pull request shows auto-merge enabled
+or has merged.
+
 ## Traps
 
 **`semanticCommitType` sits in a `packageRule`, and that is the whole fix.** It

@@ -9,14 +9,15 @@ them to consume these. A private consumer would need
 
 ## What is here
 
-| Thing                                                                | Kind              | Solves                                                                        |
-| -------------------------------------------------------------------- | ----------------- | ----------------------------------------------------------------------------- |
-| [`lint-workflows`](lint-workflows)                                   | Composite action  | Running actionlint, pinned, in every repository that has workflows            |
-| [`setup-node`](setup-node)                                           | Composite action  | The Node setup preamble repeated in every Node CI job                         |
-| [`upstream-changelog`](upstream-changelog)                           | Composite action  | Getting an updated dependency's own release notes into a consumer's changelog |
-| [`_publish-npm.yaml`](.github/workflows/_publish-npm.yaml)           | Reusable workflow | Publishing a package to npm and to GitHub Packages, after a release is cut    |
-| [`_release-please.yaml`](.github/workflows/_release-please.yaml)     | Reusable workflow | Proposing releases, with a token whose pull requests run CI                   |
-| [`_renovate-command.yaml`](.github/workflows/_renovate-command.yaml) | Reusable workflow | Answering `@renovate rebase` on a pull request, the way Dependabot does       |
+| Thing                                                                          | Kind              | Solves                                                                        |
+| ------------------------------------------------------------------------------ | ----------------- | ----------------------------------------------------------------------------- |
+| [`lint-workflows`](lint-workflows)                                             | Composite action  | Running actionlint, pinned, in every repository that has workflows            |
+| [`setup-node`](setup-node)                                                     | Composite action  | The Node setup preamble repeated in every Node CI job                         |
+| [`upstream-changelog`](upstream-changelog)                                     | Composite action  | Getting an updated dependency's own release notes into a consumer's changelog |
+| [`_publish-npm.yaml`](.github/workflows/_publish-npm.yaml)                     | Reusable workflow | Publishing a package to npm and to GitHub Packages, after a release is cut    |
+| [`_release-please.yaml`](.github/workflows/_release-please.yaml)               | Reusable workflow | Proposing releases, with a token whose pull requests run CI                   |
+| [`_renovate-command.yaml`](.github/workflows/_renovate-command.yaml)           | Reusable workflow | Answering `@renovate rebase` on a pull request, the way Dependabot does       |
+| [`_dependabot-auto-merge.yaml`](.github/workflows/_dependabot-auto-merge.yaml) | Reusable workflow | Merging Dependabot's minor and patch fixes once checks pass, as Renovate's do |
 
 ## Consuming them
 
@@ -534,6 +535,85 @@ be using this.
 
 The mention must also open a line. GitHub prefixes a quoted reply with `> `, so
 quoting a command repeats it without running it.
+
+## `_dependabot-auto-merge.yaml`
+
+Renovate's minor and patch updates merge themselves: the shared preset turns
+GitHub's auto-merge on, and the pull request squash-merges once the required
+checks pass. Dependabot has no such setting. Nothing in this organization
+configures version updates for it, so what it opens are security fixes — often
+for a dependency Renovate cannot reach, one that only appears in a lock file —
+and those were the pull requests left waiting for a person. This workflow turns
+auto-merge on for them, under the same rule.
+
+```yaml
+name: Dependabot Auto-merge
+
+on:
+  pull_request:
+
+permissions: {}
+
+jobs:
+  dependabot-auto-merge:
+    name: Enable auto-merge
+    if: github.actor == 'dependabot[bot]'
+    permissions:
+      contents: write
+      pull-requests: write
+    uses: kanso-labs/actions/.github/workflows/_dependabot-auto-merge.yaml@v4.1.0
+```
+
+The `if:` on the caller only spares every other pull request a skipped job. The
+workflow checks the same thing itself, and it is the check that counts.
+
+### Minor and patch only
+
+`dependabot/fetch-metadata` reads the update off the pull request's own commits,
+and only a `version-update:semver-minor` or `version-update:semver-patch` turns
+auto-merge on — the rule the shared Renovate preset applies to Renovate's. For a
+group, the update type is the largest change in it, so one major anywhere holds
+the whole group. A run that schedules nothing says so in a notice, so a green
+check is never read as a merge on its way.
+
+There is no waiting period, unlike Renovate's release-age grace. These are
+security fixes, and holding one back for days defeats the point of it.
+
+Auto-merge waits for the required checks, so it can only ever merge what would
+have passed anyway. A consumer whose `Lint` checks the pull request title with
+commitlint has to give Dependabot a title that passes, through the
+`commit-message` settings in its own `.github/dependabot.yml` — otherwise the
+pull request waits for ever on a check that only a person can fix.
+
+### It merges with `GITHUB_TOKEN`, and the merge starts no workflow
+
+A Dependabot-triggered run gets a read-only `GITHUB_TOKEN` and the caller's
+`permissions` raise it, but it can read Dependabot secrets only — not the
+organization's Actions secrets, where the application keys live. Rather than
+copying a private key with write access into a second store, the workflow uses
+`GITHUB_TOKEN`, and that has one consequence worth knowing: a push made with it
+starts no workflow run. So the merge commit runs no CI on the default branch,
+and does not refresh the release pull request, until something else pushes. A
+caller releasing on the daily schedule `_release-please.yaml` documents loses
+nothing by it — that run reads the default branch whatever pushed it, and the
+release pull request runs its own checks before anything ships.
+
+It also rules out a merge queue, which `GITHUB_TOKEN` cannot add a pull request
+to. The consumer needs `Settings → General → Allow auto-merge` turned on, and
+squash merging allowed.
+
+### Adopting it takes two merges, not one
+
+A Dependabot pull request runs the workflows its merge ref holds, and since
+Dependabot never edits a workflow here, those are the default branch's copies. A
+caller sitting on a branch does nothing for Dependabot, so a repository adopting
+this merges the caller first and finds out whether it works second. Point the
+`uses:` ref at a branch of this repository for that first merge if the workflow
+itself is what is being tried out, then move it to a tag.
+
+A pull request Dependabot opened before the caller merged runs it on its next
+event: commenting `@dependabot rebase` is the one that is both Dependabot's own
+and in your hands.
 
 ## Releasing this repository
 
