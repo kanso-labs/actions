@@ -1,0 +1,72 @@
+name: Dependabot Auto-merge
+
+on:
+  workflow_call:
+
+# Every caller needs exactly these two, which is what makes a block safe here
+# when _release-please.yaml cannot have one: `pull-requests: write` to turn
+# auto-merge on, and `contents: write` because the merge it schedules is a write
+# to the repository. A caller granting less fails the run with a message naming
+# the scope, rather than leaving a pull request quietly waiting.
+#
+# A Dependabot-triggered run starts with a read-only GITHUB_TOKEN, and the
+# caller's `permissions` key is what raises it — measured, a Dependabot run of
+# a workflow declaring `code-quality: write` was granted it. That is why this
+# is plain `pull_request` in the caller, not `pull_request_target`.
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    name: Enable auto-merge
+    # Only the events Dependabot itself caused. Someone else reopening one of its
+    # pull requests, or pushing to it, starts a run as themselves, and that is
+    # not a run that should be scheduling a merge. The step below checks the
+    # rest.
+    if: github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # It fails the run, and so schedules nothing, unless Dependabot opened the
+      # pull request and wrote every commit on it — so a commit pushed by
+      # anybody else stops it here.
+      - name: Read what the pull request updates
+        id: metadata
+        uses: dependabot/fetch-metadata@v3.1.0
+
+      # Minor and patch only, the rule the shared Renovate preset applies to its
+      # own pull requests. For a group, `update-type` is the largest change in
+      # it, so one major anywhere holds the whole group for a person.
+      #
+      # GITHUB_TOKEN rather than an application token, and the cost is known:
+      # a merge made with it starts no workflow run, so the push it makes to the
+      # default branch runs no CI there and refreshes no release pull request
+      # until something else does. An application token would close that, but a
+      # Dependabot-triggered run can read only Dependabot secrets, so it would
+      # mean keeping a copy of a private key with write access in a second
+      # store. README.md has the rest.
+      #
+      # The URL goes through env rather than being interpolated, the same way
+      # every other value from the event does in this repository.
+      - name: Enable auto-merge
+        if: >-
+          steps.metadata.outputs.update-type == 'version-update:semver-minor' ||
+          steps.metadata.outputs.update-type == 'version-update:semver-patch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PULL_REQUEST_URL: ${{ github.event.pull_request.html_url }}
+        run: gh pr merge --auto --squash "$PULL_REQUEST_URL"
+
+      # A run that schedules nothing still says why, so a green check on a
+      # major update is not read as a merge on the way.
+      - name: Leave a major update for a person
+        if: >-
+          steps.metadata.outputs.update-type != 'version-update:semver-minor' &&
+          steps.metadata.outputs.update-type != 'version-update:semver-patch'
+        env:
+          UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
+        run: >-
+          echo "::notice title=Not auto-merged::Dependabot reports this as
+          '${UPDATE_TYPE:-an unknown update type}', and only minor and patch
+          updates merge themselves."
