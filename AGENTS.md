@@ -180,6 +180,15 @@ needs release-please itself, and the recipe is in
 the block looks like, rather than trusting the unit tests, because they assert
 the shape this repository decided on and not the shape release-please accepts.
 
+**`_publish-npm.yaml`'s tag check has unit tests for the same kind of reason.**
+The release it refuses, one cut by a later run than the merge commit's own,
+cannot be produced on a pull request.
+[`tests/publish-npm-tag-check.test.mjs`](tests/publish-npm-tag-check.test.mjs)
+cuts the check out of the workflow by its step name and runs it against a real
+bare-repository remote, with lightweight, annotated and prerelease tags. Both
+jobs carry a copy of the check, and the tests hold the two equal, so editing one
+without the other fails.
+
 **The reusable workflow has one too, in dry-run.** `Dry run release-please` in
 [`test.yaml`](.github/workflows/test.yaml) calls
 `./.github/workflows/_release-please.yaml` with `dry-run: true`, so
