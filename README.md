@@ -338,34 +338,42 @@ since a GitHub App id and a client id are interchangeable where it lands — eac
 is accepted as the JWT issuer. Passing an app id under the `client-id` name
 still works, so the rename can be done before the secret is.
 
-**In fallback mode, auto-merge is disabled no matter what `auto-merge` is set
-to.** Merging the release pull request is only half of a release: that merge
-pushes the default branch, and the run it starts is what cuts the tag and the
-GitHub release. A push made with `GITHUB_TOKEN` starts no run, so auto-merging
-as it leaves the release half-applied: the version is bumped and the changelog
-written, but nothing is tagged. The next push to the default branch, whenever
-that happens and whatever it is for, cuts the tag late — so on a quiet
-repository the released version spends an unbounded stretch being one that
-nobody can pin. A person's merge starts the run immediately, so the fallback
-leaves the merge to them.
+**In fallback mode, nothing is merged no matter what `auto-merge` is set to.**
+Merging the release pull request is only half of a release: that merge pushes
+the default branch, and the run it starts is what cuts the tag and the GitHub
+release. A push made with `GITHUB_TOKEN` starts no run, so merging as it leaves
+the release half-applied: the version is bumped and the changelog written, but
+nothing is tagged. The next push to the default branch, whenever that happens
+and whatever it is for, cuts the tag late — so on a quiet repository the
+released version spends an unbounded stretch being one that nobody can pin. A
+person's merge starts the run immediately, so the fallback leaves the merge to
+them.
 
 A repository whose ruleset requires status checks cannot really use the fallback
 at all: the release pull request never starts the checks it is required to pass,
 so nobody without bypass can merge it. That is the real reason such a consumer
 needs the application installed, rather than a stylistic one.
 
-**Auto-merge on the release pull requests.** Enabled by default; pass
-`auto-merge: false` to turn it off. Note that `--auto` only queues when gh reads
-something blocking the pull request; when it reads the pull request as
-mergeable, it merges on the spot.
+**Merging the release pull requests.** On by default; pass `auto-merge: false`
+to turn it off. The input keeps its name, but the step merges directly rather
+than arming GitHub's auto-merge. It waits for the pull request's checks to
+finish, then lists the commits on the base branch since release-please computed
+the pull request. If any of them is one the changelog would list, the merge is
+left for the next run, by when that commit's own run has rewritten the pull
+request. Otherwise it merges, pinned to the head it read straight after
+release-please ran, and GitHub decides whether the required checks passed.
 
-That read can be stale. GitHub computes a pull request's merge state lazily, so
-the first read after the default branch moves past the pull request's base can
-come back `UNKNOWN`. gh then tries to queue a pull request GitHub already counts
-as clean, and GitHub refuses with `Pull request is in clean status`. The step
-re-reads the state until GitHub has computed it, logs it, and tries once more,
-which merges it. Both attempts are pinned to the head the run read straight
-after release-please, so neither can merge a commit the run never saw.
+"Would list" is release-please's own rule: a type the changelog shows, or a
+breaking change of a type it hides, read from the `changelog-sections` in your
+`release-please-config.json`, or release-please's defaults if it names none.
+
+An armed auto-merge could not refuse that way. It fires when the checks pass,
+whatever has landed since, so a user-facing commit could ship inside the tag
+with no changelog entry, and release-please would then count it as released.
+That happened in `kanso-labs/home-assistant-applications` on 2026-09-18.
+Requiring the pull request to be up to date with the branch would not help
+either: release-please leaves it behind whenever only hidden types land, and
+nothing would ever update it.
 
 The step finds those pull requests by their `autorelease: pending` label rather
 than by reading the action's `prs` output, and that difference is what lets a
@@ -408,11 +416,11 @@ repository instead of all of them.
 ### Releasing once a day instead of once a merge
 
 By default every merge to the default branch ends up releasing: the push run
-opens or updates the release pull request and turns auto-merge on, so it merges
-as soon as its checks pass, and the next merge opens another one. To batch a day
-of merges into one release, keep the push trigger — it is what keeps the release
-pull request's changelog and version current, and what makes pending work
-visible all day — and turn auto-merge on only from a scheduled run:
+opens or updates the release pull request and merges it once its checks pass,
+and the next merge opens another one. To batch a day of merges into one release,
+keep the push trigger — it is what keeps the release pull request's changelog
+and version current, and what makes pending work visible all day — and merge
+only from a scheduled run:
 
 ```yaml
 on:
