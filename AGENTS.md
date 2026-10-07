@@ -22,12 +22,12 @@ every caller before changing an input's meaning or a default.
 
 ## Commands
 
-| Task           | Command          | Notes                                                 |
-| -------------- | ---------------- | ----------------------------------------------------- |
-| Lint           | `npm run lint`   | Prettier check over the YAML, JSON and Markdown       |
-| Format         | `npm run format` | Prettier write; run it before pushing                 |
-| Lint workflows | `actionlint`     | Also runs as a step of `Lint` in CI                   |
-| Test           | `npm test`       | `node --test` over `actions/**`; runs as `Test` in CI |
+| Task           | Command          | Notes                                             |
+| -------------- | ---------------- | ------------------------------------------------- |
+| Lint           | `npm run lint`   | Prettier check over the YAML, JSON and Markdown   |
+| Format         | `npm run format` | Prettier write; run it before pushing             |
+| Lint workflows | `actionlint`     | Also runs as a step of `Lint` in CI               |
+| Test           | `npm test`       | `node --test` over every `*.test.mjs`; runs in CI |
 
 There is no `SessionStart` hook here, so `npm ci` is yours to run before
 `npm run lint`. Neither command type-checks anything — see Verifying a change

@@ -9,15 +9,18 @@ permissions:
   contents: read
 
 jobs:
-  # upstream-changelog is the only thing here with enough logic of its
-  # own to be worth unit testing, and the only one that cannot be smoke tested
-  # the way the other two composite actions are: a live run needs an open
-  # Renovate pull request carrying release notes, which exists in a consumer
-  # and not here. The tests stand in for that, over a body in Renovate's own
-  # layout.
+  # upstream-changelog has enough logic of its own to be worth unit testing,
+  # and is the only composite action that cannot be smoke tested the way the
+  # other two are: a live run needs an open Renovate pull request carrying
+  # release notes, which exists in a consumer and not here. The tests stand in
+  # for that, over a body in Renovate's own layout.
   #
   # What they cannot cover is release-please agreeing with the block they
   # check. That part is in the action's README, as a recipe to run by hand.
+  #
+  # The release merge in _release-please.yaml is tested here for a similar
+  # reason: the race its retry handles cannot be started on demand, so its
+  # script runs against a stand-in gh instead.
   test:
     name: Run the unit tests
     runs-on: ubuntu-latest
