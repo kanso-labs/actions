@@ -453,10 +453,21 @@ request, not a release-now button. To release before the next scheduled run,
 enable auto-merge on the pull request by hand.
 
 Two things about scheduled workflows are worth knowing before relying on one.
-GitHub queues them hardest on the hour and may start one several minutes late,
-which for a daily release costs nothing. And it disables a schedule outright
-after 60 days without repository activity — a silent stop to releasing is the
-shape that failure takes.
+
+**A scheduled run starts hours after its cron, not minutes.** Across the 171
+scheduled release runs in this organization from 2026-08-28 to 2026-10-07, all
+on `0 9 * * *`, the earliest started 3h11m after the cron, the median 5h03m and
+the latest 11h41m. So the day's release merges around midday UTC or later, while
+people are merging, rather than before anyone is at work. GitHub suggests moving
+a cron off the top of the hour to spread its load, and nothing measured here
+says that shortens a delay of hours. Re-measure before relying on these numbers:
+
+```bash
+gh run list --workflow release-please.yaml --event schedule --limit 100 --json createdAt
+```
+
+**GitHub disables a schedule after 60 days without repository activity.** A
+silent stop to releasing is the shape that failure takes.
 
 This needs v3.2.0 or later. Before it, auto-merge read the `prs` output above,
 and a scheduled run that re-confirmed an unchanged release pull request merged
