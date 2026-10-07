@@ -128,10 +128,22 @@ jobs:
       # hand. A human's merge does start that run, so the fallback path leaves
       # this to them.
       #
-      # Auto-merge also only queues when something is already blocking the pull
-      # request, which is normally a ruleset requiring status checks. Remove
-      # that rule and this stops waiting for anything: --auto on an unblocked
-      # pull request merges it on the spot.
+      # Auto-merge also only queues when gh reads something blocking the pull
+      # request, which is normally a ruleset requiring status checks. When it
+      # reads the pull request as mergeable, --auto merges it on the spot.
+      #
+      # That read is gh's own, of mergeStateStatus, and GitHub computes the
+      # state lazily. Once the default branch has moved past the pull request's
+      # base, the first read after the move can come back UNKNOWN. gh then tries
+      # to arm auto-merge on a pull request the server already counts as clean,
+      # and the server refuses with "Pull request is in clean status". So a
+      # failure is followed by re-reading the state until GitHub has computed
+      # it, logging what was read, and one more attempt, which on CLEAN takes
+      # gh's merge-now path.
+      #
+      # Both attempts pass --match-head-commit with the head read straight after
+      # release-please ran, so the second cannot merge a head this run never
+      # saw.
       #
       # Failing to enable it is not worth failing the run over. The release
       # pull request itself is already open and correct, and merging it by hand
@@ -159,14 +171,29 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          prs="$(gh pr list --label 'autorelease: pending' --state open --limit 100 --json number --jq '.[].number')"
+          prs="$(gh pr list --label 'autorelease: pending' --state open --limit 100 --json number,headRefOid --jq '.[] | "\(.number) \(.headRefOid)"')"
           if [[ -z "${prs}" ]]; then
             echo 'No open release pull request to enable auto-merge on.'
             exit 0
           fi
-          while read -r pr; do
-            if gh pr merge --auto --squash "${pr}"; then
+          while read -r pr head; do
+            if gh pr merge --auto --squash --match-head-commit "${head}" "${pr}"; then
               echo "Auto-merge enabled on #${pr}."
+              continue
+            fi
+
+            # Bounded, so a state GitHub never settles costs half a minute
+            # rather than the job's timeout. A failed read is logged rather
+            # than ending the step, which only ever warns.
+            for attempt in {1..10}; do
+              state="$(gh pr view "${pr}" --json mergeStateStatus --jq '.mergeStateStatus')" || state='unreadable'
+              echo "#${pr} read ${attempt}: mergeStateStatus ${state}"
+              [[ "${state}" != UNKNOWN ]] && break
+              sleep 3
+            done
+
+            if gh pr merge --auto --squash --match-head-commit "${head}" "${pr}"; then
+              echo "Auto-merge enabled on #${pr} at the second attempt."
             else
               echo "::warning::Could not enable auto-merge on #${pr}. Merge it by hand."
             fi

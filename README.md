@@ -342,9 +342,17 @@ so nobody without bypass can merge it. That is the real reason such a consumer
 needs the application installed, rather than a stylistic one.
 
 **Auto-merge on the release pull requests.** Enabled by default; pass
-`auto-merge: false` to turn it off. Note that `--auto` only queues when
-something is already blocking the pull request. With no required checks it
-merges on the spot.
+`auto-merge: false` to turn it off. Note that `--auto` only queues when gh reads
+something blocking the pull request; when it reads the pull request as
+mergeable, it merges on the spot.
+
+That read can be stale. GitHub computes a pull request's merge state lazily, so
+the first read after the default branch moves past the pull request's base can
+come back `UNKNOWN`. gh then tries to queue a pull request GitHub already counts
+as clean, and GitHub refuses with `Pull request is in clean status`. The step
+re-reads the state until GitHub has computed it, logs it, and tries once more,
+which merges it. Both attempts are pinned to the head the run read straight
+after release-please, so neither can merge a commit the run never saw.
 
 The step finds those pull requests by their `autorelease: pending` label rather
 than by reading the action's `prs` output, and that difference is what lets a
