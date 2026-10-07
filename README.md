@@ -112,7 +112,9 @@ publish:
     contents: read
     id-token: write
     packages: write
-  uses: kanso-labs/actions/.github/workflows/_publish-npm.yaml@v4.0.0
+  uses: kanso-labs/actions/.github/workflows/_publish-npm.yaml@v4.2.0
+  with:
+    tag-name: ${{ needs.release-please.outputs.tag_name }}
 ```
 
 Compare `release_created` against the string. A bare truthiness test also passes
@@ -128,6 +130,17 @@ the re-run finds nothing to release. A failed call still hands its outputs to
 the caller, which is what makes `release_created` safe to read after one —
 measured for
 [kanso-labs/unplugin-style-dictionary#425](https://github.com/kanso-labs/unplugin-style-dictionary/issues/425).
+
+Pass `tag-name`, which needs v4.2.0 or later. release-please tags the release
+pull request's merge commit, whichever run cuts the release, while both jobs
+check out the commit of the run that calls them. The two differ when a later run
+cuts the release: the merge commit's run displaced from the caller's concurrency
+queue, or failing before it tagged. Publishing then would ship the later
+commit's code under the tagged version. Given `tag-name`, both jobs refuse
+instead and name both commits, and the version stays tagged and unpublished for
+a person to publish from the tag. Checking out the tag would not be enough: npm
+writes the run's `GITHUB_SHA` into the provenance attestation, which would then
+name a commit the tarball was not built from.
 
 ### Two registries, two jobs, one order
 

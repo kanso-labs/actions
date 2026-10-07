@@ -47,6 +47,16 @@ on:
           .npmrc. Both jobs also install from it.
         required: false
         type: string
+      tag-name:
+        default: ''
+        description:
+          Tag the release was cut at, which is _release-please.yaml's tag_name
+          output. When given, both jobs refuse to publish unless the commit they
+          checked out is the one the tag names and package.json carries the
+          tag's version. Optional only so a dry run with no release behind it
+          can leave it out; a publishing caller should always pass it.
+        required: false
+        type: string
 
 # Permissions are declared per job below rather than once for the file, and that
 # is not tidiness — the two jobs must not hold each other's scope.
@@ -76,6 +86,56 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v7.0.1
+
+      # release-please tags the release pull request's merge commit, whichever
+      # run cuts the release, and the checkout above takes this run's own
+      # commit. The two differ when a later run cuts it: the merge commit's run
+      # displaced from the concurrency group's queue, or failing before it
+      # tagged. Publishing then would ship the later commit's code under the
+      # tagged version, missing from that version's notes.
+      #
+      # Checking out the tag instead is not enough. npm writes GITHUB_SHA into
+      # the provenance attestation, so the attestation would name a commit the
+      # tarball was not built from. So this refuses, and the version stays
+      # tagged and unpublished for a person to publish from the tag.
+      #
+      # The checkout is shallow and fetches no tags, so the tag is resolved on
+      # the remote: the peeled commit for an annotated tag, the tag itself for
+      # a lightweight one, which is what release-please creates. The mirror job
+      # below runs the same check after its own checkout, and
+      # tests/publish-npm-tag-check.test.mjs holds the two copies equal.
+      - name: Check this is the tagged commit
+        if: inputs.tag-name != ''
+        env:
+          TAG_NAME: ${{ inputs.tag-name }}
+        run: |
+          tagged="$(git ls-remote origin "refs/tags/${TAG_NAME}^{}" | cut -f1)"
+          if [[ -z "${tagged}" ]]; then
+            tagged="$(git ls-remote origin "refs/tags/${TAG_NAME}" | cut -f1)"
+          fi
+          if [[ -z "${tagged}" ]]; then
+            echo "::error::Refusing to publish: origin has no tag ${TAG_NAME}."
+            exit 1
+          fi
+
+          head="$(git rev-parse HEAD)"
+          if [[ "${head}" != "${tagged}" ]]; then
+            echo "::error::Refusing to publish: ${TAG_NAME} is at ${tagged}, but this run checked out ${head}."
+            exit 1
+          fi
+
+          if [[ ! "${TAG_NAME}" =~ (^|-)v([0-9]+\.[0-9]+\.[0-9]+.*)$ ]]; then
+            echo "::error::Refusing to publish: ${TAG_NAME} carries no version to compare."
+            exit 1
+          fi
+          tag_version="${BASH_REMATCH[2]}"
+          version="$(node -p 'require("./package.json").version')"
+          if [[ "${version}" != "${tag_version}" ]]; then
+            echo "::error::Refusing to publish: ${TAG_NAME} names ${tag_version}, but package.json carries ${version}."
+            exit 1
+          fi
+
+          echo "Publishing ${version} from ${head}, the commit ${TAG_NAME} names."
 
       # Deliberately not this repository's setup-node, even though
       # these two steps are most of what it does.
@@ -174,6 +234,42 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v7.0.1
+
+      # The same check as the job above, for the same reason. needs: publish
+      # already keeps a refused publish from reaching here, but this job is
+      # what re-running it alone runs, so it checks again rather than trust it.
+      - name: Check this is the tagged commit
+        if: inputs.tag-name != ''
+        env:
+          TAG_NAME: ${{ inputs.tag-name }}
+        run: |
+          tagged="$(git ls-remote origin "refs/tags/${TAG_NAME}^{}" | cut -f1)"
+          if [[ -z "${tagged}" ]]; then
+            tagged="$(git ls-remote origin "refs/tags/${TAG_NAME}" | cut -f1)"
+          fi
+          if [[ -z "${tagged}" ]]; then
+            echo "::error::Refusing to publish: origin has no tag ${TAG_NAME}."
+            exit 1
+          fi
+
+          head="$(git rev-parse HEAD)"
+          if [[ "${head}" != "${tagged}" ]]; then
+            echo "::error::Refusing to publish: ${TAG_NAME} is at ${tagged}, but this run checked out ${head}."
+            exit 1
+          fi
+
+          if [[ ! "${TAG_NAME}" =~ (^|-)v([0-9]+\.[0-9]+\.[0-9]+.*)$ ]]; then
+            echo "::error::Refusing to publish: ${TAG_NAME} carries no version to compare."
+            exit 1
+          fi
+          tag_version="${BASH_REMATCH[2]}"
+          version="$(node -p 'require("./package.json").version')"
+          if [[ "${version}" != "${tag_version}" ]]; then
+            echo "::error::Refusing to publish: ${TAG_NAME} names ${tag_version}, but package.json carries ${version}."
+            exit 1
+          fi
+
+          echo "Publishing ${version} from ${head}, the commit ${TAG_NAME} names."
 
       # Points at the public registry and not at GitHub Packages, which is the
       # trap this job is built around rather than an oversight.
