@@ -105,7 +105,9 @@ over trusted publishing, then to GitHub Packages. One call does both.
 publish:
   name: Publish to npm
   needs: release-please
-  if: needs.release-please.outputs.release_created == 'true'
+  if:
+    ${{ !cancelled() && needs.release-please.outputs.release_created == 'true'
+    }}
   permissions:
     contents: read
     id-token: write
@@ -116,6 +118,16 @@ publish:
 Compare `release_created` against the string. A bare truthiness test also passes
 on `"false"`, which is what that output carries when release-please runs and
 decides not to cut a release — so the package would be published on every merge.
+
+Keep `!cancelled()` in front of it. release-please cuts releases and then
+updates pull requests in one step, so a failure in the second half fails
+`Propose releases` with the tag already pushed. Without a status function GitHub
+applies `success()` and skips the publish, and a re-run cannot recover it: the
+release half has already relabelled the pull request `autorelease: tagged`, so
+the re-run finds nothing to release. A failed call still hands its outputs to
+the caller, which is what makes `release_created` safe to read after one —
+measured for
+[kanso-labs/unplugin-style-dictionary#425](https://github.com/kanso-labs/unplugin-style-dictionary/issues/425).
 
 ### Two registries, two jobs, one order
 
@@ -434,12 +446,15 @@ releasing for real has no reason to set it.
 `version`, passed straight through from the action. `prs` is empty on any run
 that wrote no release pull request, a run that found one already correct
 included — read the auto-merge note above before building on it. A caller that
-publishes on release reads `release_created`:
+publishes on release reads `release_created`, behind `!cancelled()` for the
+reason given under `_publish-npm.yaml` above:
 
 ```yaml
 publish:
   needs: release-please
-  if: needs.release-please.outputs.release_created == 'true'
+  if:
+    ${{ !cancelled() && needs.release-please.outputs.release_created == 'true'
+    }}
 ```
 
 ## `_renovate-command.yaml`
