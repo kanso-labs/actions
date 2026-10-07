@@ -6,10 +6,11 @@ on:
       auto-merge:
         default: true
         description:
-          Whether to enable auto-merge on the release pull requests that are
-          open at the end of this run, whether or not this run is what opened
-          them. A caller that batches its releases passes true only on the run
-          that is meant to merge.
+          Whether to merge the release pull requests that are open at the end of
+          this run, whether or not this run is what opened them, once their
+          checks finish and if nothing their changelog would list has landed
+          since they were computed. A caller that batches its releases passes
+          true only on the run that is meant to merge.
         required: false
         type: boolean
       dry-run:
@@ -128,24 +129,45 @@ jobs:
       # hand. A human's merge does start that run, so the fallback path leaves
       # this to them.
       #
-      # Auto-merge also only queues when gh reads something blocking the pull
-      # request, which is normally a ruleset requiring status checks. When it
-      # reads the pull request as mergeable, --auto merges it on the spot.
+      # This merges directly rather than arming GitHub's auto-merge, because an
+      # armed merge cannot refuse a release that has gone stale. It fires when
+      # the checks pass, whatever has landed on the branch since release-please
+      # computed the pull request, and a push landing mid-run cannot rewrite
+      # the pull request in time either: its own run queues behind this one. A
+      # user-facing commit then ships inside the tag with no changelog entry,
+      # and since release-please counts it as released, no later release lists
+      # it. That happened in kanso-labs/home-assistant-applications on
+      # 2026-09-18.
       #
-      # That read is gh's own, of mergeStateStatus, and GitHub computes the
-      # state lazily. Once the default branch has moved past the pull request's
-      # base, the first read after the move can come back UNKNOWN. gh then tries
-      # to arm auto-merge on a pull request the server already counts as clean,
-      # and the server refuses with "Pull request is in clean status". So a
-      # failure is followed by re-reading the state until GitHub has computed
-      # it, logging what was read, and one more attempt, which on CLEAN takes
-      # gh's merge-now path.
+      # So this waits for the pull request's checks to finish, then lists the
+      # commits on the base branch since the one the pull request was computed
+      # from, which is its head's parent: release-please writes the pull
+      # request as one commit on top of the branch. If any of them is one the
+      # changelog would list, the merge is left for the next run, by when that
+      # commit's own run has rewritten the pull request. Otherwise it merges at
+      # once, pinned to the head read straight after release-please ran. The
+      # gap between the listing and the merge is seconds.
       #
-      # Both attempts pass --match-head-commit with the head read straight after
-      # release-please ran, so the second cannot merge a head this run never
-      # saw.
+      # "Would list" is release-please's own rule (src/util/filter-commits.ts,
+      # release-please 17.6.0): a type its changelog shows, or a breaking
+      # change of a type it hides. The types come from the consumer's
+      # release-please-config.json, top level and every package, or
+      # release-please's defaults when it names none. Every line of a message
+      # shaped like a conventional header is read, so a nested commit in a
+      # squashed body errs towards waiting a day.
       #
-      # Failing to enable it is not worth failing the run over. The release
+      # Requiring the pull request to be up to date with the branch instead is
+      # unsound: release-please does not rewrite it when only hidden types
+      # land, so it is routinely behind and would sit BEHIND with nothing to
+      # update it.
+      #
+      # The merge goes through the REST endpoint rather than gh pr merge, which
+      # refuses on its own read of mergeStateStatus. GitHub computes that
+      # lazily, so straight after the checks finish gh can still read BLOCKED.
+      # The endpoint lets the server decide, and a refusal is retried twice in
+      # case the server was still settling too.
+      #
+      # Failing to merge is not worth failing the run over. The release
       # pull request itself is already open and correct, and merging it by hand
       # still works, so this warns and moves on.
       #
@@ -165,36 +187,82 @@ jobs:
       # being empty whenever the pull request was skipped; a label lookup finds
       # the standing release pull request either way, so this condition is the
       # only thing left keeping a dry run from merging a real release.
-      - name: Enable auto-merge on the open release pull requests
+      - name: Merge the open release pull requests
         if: inputs.auto-merge && !inputs.dry-run && env.CLIENT_ID != ''
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          prs="$(gh pr list --label 'autorelease: pending' --state open --limit 100 --json number,headRefOid --jq '.[] | "\(.number) \(.headRefOid)"')"
+          prs="$(gh pr list --label 'autorelease: pending' --state open --limit 100 --json number,headRefOid,baseRefName --jq '.[] | "\(.number) \(.headRefOid) \(.baseRefName)"')"
           if [[ -z "${prs}" ]]; then
-            echo 'No open release pull request to enable auto-merge on.'
+            echo 'No open release pull request to merge.'
             exit 0
           fi
-          while read -r pr head; do
-            if gh pr merge --auto --squash --match-head-commit "${head}" "${pr}"; then
-              echo "Auto-merge enabled on #${pr}."
+
+          # Empty rather than [] when the file cannot be read, since nothing
+          # here sets pipefail, so both mean release-please's defaults.
+          sections="$(gh api "repos/${GH_REPO}/contents/release-please-config.json" --jq '.content' | base64 -d | jq -c '[.["changelog-sections"], (.packages // {} | .[]["changelog-sections"])] | map(select(. != null)) | flatten')" || sections=''
+          if [[ -z "${sections}" || "${sections}" == '[]' ]]; then
+            sections='[{"type":"feat"},{"type":"fix"},{"type":"perf"},{"type":"revert"},{"type":"chore","hidden":true},{"type":"docs","hidden":true},{"type":"style","hidden":true},{"type":"refactor","hidden":true},{"type":"test","hidden":true},{"type":"build","hidden":true},{"type":"ci","hidden":true}]'
+          fi
+
+          # Prints each commit, among those a compare returned, that the
+          # changelog would list, and a line of its own when GitHub returned
+          # fewer commits than landed, since the rest cannot be judged. The
+          # dollar signs are jq's, so the quotes are single on purpose.
+          # shellcheck disable=SC2016
+          listed='
+            ($sections | map(select(.hidden != true) | .type)) as $visible
+            | ($sections | map(select(.hidden == true) | .type)) as $hidden
+            | (if .total_commits > (.commits | length)
+               then "\(.total_commits) commits landed, more than could be read"
+               else empty end),
+              (.commits[]
+               | .sha[0:7] as $sha
+               | (.commit.message | split("\n")) as $lines
+               | ($lines | any(test("^BREAKING[ -]CHANGE: "))) as $footer
+               | $lines[] as $line
+               | ($line | capture("^(?<type>[A-Za-z]+)(\\([^()]*\\))?(?<bang>!)?: ")) as $header
+               | select(($visible | index($header.type)) != null
+                   or (($header.bang == "!" or $footer) and ($hidden | index($header.type)) != null))
+               | "\($sha) \($line)")'
+
+          while read -r pr head base; do
+            # Checks are created a few seconds after a push, so a pull request
+            # release-please has just rewritten can report none yet. Waiting
+            # ends once every check has finished, or after a minute with none
+            # at all; the merge is what enforces which ones had to pass.
+            for attempt in {1..90}; do
+              read -r total pending <<< "$(gh pr view "${pr}" --json statusCheckRollup --jq '[(.statusCheckRollup | length), ([.statusCheckRollup[] | select((.status // "COMPLETED") != "COMPLETED" or .state == "PENDING" or .state == "EXPECTED")] | length)] | join(" ")')"
+              if (( total > 0 && pending == 0 )) || (( total == 0 && attempt >= 4 )); then
+                break
+              fi
+              sleep 20
+            done
+
+            if ! computed="$(gh api "repos/${GH_REPO}/commits/${head}" --jq '.parents[0].sha')" ||
+              ! compare="$(gh api "repos/${GH_REPO}/compare/${computed}...${base}")" ||
+              ! landed="$(jq -r --argjson sections "${sections}" "${listed}" <<< "${compare}")"; then
+              echo "::warning::Could not list what landed on ${base} since #${pr} was computed. Merge it by hand."
+              continue
+            fi
+            if [[ -n "${landed}" ]]; then
+              echo "::notice::Not merging #${pr}. It was computed before these landed on ${base}, and its changelog would list them. The next run merges it once their own run has rewritten it."
+              echo "${landed}"
               continue
             fi
 
-            # Bounded, so a state GitHub never settles costs half a minute
-            # rather than the job's timeout. A failed read is logged rather
-            # than ending the step, which only ever warns.
-            for attempt in {1..10}; do
-              state="$(gh pr view "${pr}" --json mergeStateStatus --jq '.mergeStateStatus')" || state='unreadable'
-              echo "#${pr} read ${attempt}: mergeStateStatus ${state}"
-              [[ "${state}" != UNKNOWN ]] && break
-              sleep 3
+            merged=''
+            for attempt in 1 2 3; do
+              if result="$(gh api -X PUT "repos/${GH_REPO}/pulls/${pr}/merge" -f merge_method=squash -f sha="${head}" --jq '.message' 2>&1)"; then
+                merged=yes
+                echo "#${pr}: ${result}"
+                break
+              fi
+              echo "#${pr} merge attempt ${attempt}: ${result}"
+              sleep 10
             done
-
-            if gh pr merge --auto --squash --match-head-commit "${head}" "${pr}"; then
-              echo "Auto-merge enabled on #${pr} at the second attempt."
-            else
-              echo "::warning::Could not enable auto-merge on #${pr}. Merge it by hand."
+            if [[ -z "${merged}" ]]; then
+              echo "::warning::Could not merge #${pr}. Merge it by hand."
             fi
           done <<< "${prs}"

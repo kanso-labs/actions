@@ -189,6 +189,24 @@ bare-repository remote, with lightweight, annotated and prerelease tags. Both
 jobs carry a copy of the check, and the tests hold the two equal, so editing one
 without the other fails.
 
+**So does the release merge in `_release-please.yaml`.** It decides from a
+commit landing while a release pull request waits, from checks still running,
+and from GitHub refusing a merge, and no pull request here can arrange any of
+them.
+[`tests/release-please-auto-merge.test.mjs`](tests/release-please-auto-merge.test.mjs)
+cuts the step out of the workflow by its step name and runs it under `bash -e`
+against a stand-in `gh`, which applies the step's own `--jq` filters with the
+real `jq`. Renaming the step fails those tests loudly, since the name is how
+they find the script.
+
+**The merge's notion of a listed commit has to stay release-please's.** It
+copies `filterCommits` in release-please's `src/util/filter-commits.ts`: a type
+the changelog shows, or a breaking change of a type it hides, with
+release-please's defaults when a configuration names no sections. If
+release-please changes that rule, a commit it lists could pass this check and
+ship unlisted, which is the outcome the merge exists to prevent. Read that file
+again when Renovate bumps `release-please-action`.
+
 **The reusable workflow has one too, in dry-run.** `Dry run release-please` in
 [`test.yaml`](.github/workflows/test.yaml) calls
 `./.github/workflows/_release-please.yaml` with `dry-run: true`, so
