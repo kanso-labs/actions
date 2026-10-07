@@ -1,5 +1,18 @@
 # Changelog
 
+## [4.2.0](https://github.com/kanso-labs/actions/compare/v4.1.0...v4.2.0) (2026-10-07)
+
+
+### Features
+
+* **publish-npm:** refuse to publish a commit other than the one tagged ([#79](https://github.com/kanso-labs/actions/issues/79)) ([da629b2](https://github.com/kanso-labs/actions/commit/da629b263199e20fe3b568a9e353e16eb00fdac6))
+
+
+### Continuous Integration
+
+* **release:** retry the release merge when gh reads a stale merge state ([#77](https://github.com/kanso-labs/actions/issues/77)) ([89dc4e1](https://github.com/kanso-labs/actions/commit/89dc4e1bc1f4925ad7cf580313cfadd16a3e3a4f))
+* **release:** stop the scheduled merge shipping commits it never listed ([#80](https://github.com/kanso-labs/actions/issues/80)) ([88b09f4](https://github.com/kanso-labs/actions/commit/88b09f42b724bc468f52fb0cc010640b580fca7a))
+
 ## [4.1.0](https://github.com/kanso-labs/actions/compare/v4.0.2...v4.1.0) (2026-10-01)
 
 
