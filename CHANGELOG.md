@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.2.1](https://github.com/kanso-labs/actions/compare/v4.2.0...v4.2.1) (2026-10-08)
+
+
+### Dependencies
+
+* update actions/setup-node action to v7.1.0 ([#84](https://github.com/kanso-labs/actions/issues/84)) ([93d8dc3](https://github.com/kanso-labs/actions/commit/93d8dc33f9e4c36b8c6fa3b2235726744ae865fe))
+
 ## [4.2.0](https://github.com/kanso-labs/actions/compare/v4.1.0...v4.2.0) (2026-10-07)
 
 
