@@ -157,7 +157,7 @@ jobs:
       # off anyway: it installs once and throws the runner away, so restoring
       # the cache costs more than the one install it saves.
       - name: Set up Node
-        uses: actions/setup-node@v7.0.0
+        uses: actions/setup-node@v7.1.0
         with:
           package-manager-cache: false
           node-version-file: ${{ inputs.node-version-file }}
@@ -286,7 +286,7 @@ jobs:
       # So: install and build against the same registry the job above uses, and
       # repoint npm afterwards, once there is nothing left to resolve.
       - name: Set up Node
-        uses: actions/setup-node@v7.0.0
+        uses: actions/setup-node@v7.1.0
         with:
           package-manager-cache: false
           node-version-file: ${{ inputs.node-version-file }}
@@ -331,7 +331,7 @@ jobs:
       # publish's correctness does not turn on which repository a context is
       # read from.
       - name: Point npm at GitHub Packages
-        uses: actions/setup-node@v7.0.0
+        uses: actions/setup-node@v7.1.0
         with:
           package-manager-cache: false
           node-version-file: ${{ inputs.node-version-file }}
