@@ -165,7 +165,10 @@ jobs:
       # refuses on its own read of mergeStateStatus. GitHub computes that
       # lazily, so straight after the checks finish gh can still read BLOCKED.
       # The endpoint lets the server decide, and a refusal is retried twice in
-      # case the server was still settling too.
+      # case the server was still settling too. Each retry lists what landed
+      # again first: a refusal reading "Base branch was modified" means a push
+      # has just landed, and the first version of this step, which listed only
+      # once, merged a fix: commit pushed into that gap without listing it.
       #
       # Failing to merge is not worth failing the run over. The release
       # pull request itself is already open and correct, and merging it by hand
@@ -240,20 +243,28 @@ jobs:
               sleep 20
             done
 
-            if ! computed="$(gh api "repos/${GH_REPO}/commits/${head}" --jq '.parents[0].sha')" ||
-              ! compare="$(gh api "repos/${GH_REPO}/compare/${computed}...${base}")" ||
-              ! landed="$(jq -r --argjson sections "${sections}" "${listed}" <<< "${compare}")"; then
-              echo "::warning::Could not list what landed on ${base} since #${pr} was computed. Merge it by hand."
-              continue
-            fi
-            if [[ -n "${landed}" ]]; then
-              echo "::notice::Not merging #${pr}. It was computed before these landed on ${base}, and its changelog would list them. The next run merges it once their own run has rewritten it."
-              echo "${landed}"
+            if ! computed="$(gh api "repos/${GH_REPO}/commits/${head}" --jq '.parents[0].sha')"; then
+              echo "::warning::Could not read what #${pr} was computed from. Merge it by hand."
               continue
             fi
 
+            # What landed is listed again before every attempt, not once
+            # before the first. The commonest refusal, "Base branch was
+            # modified", means something has just landed, and a retry that
+            # did not look again merged it unlisted.
             merged=''
             for attempt in 1 2 3; do
+              if ! compare="$(gh api "repos/${GH_REPO}/compare/${computed}...${base}")" ||
+                ! landed="$(jq -r --argjson sections "${sections}" "${listed}" <<< "${compare}")"; then
+                echo "::warning::Could not list what landed on ${base} since #${pr} was computed. Merge it by hand."
+                continue 2
+              fi
+              if [[ -n "${landed}" ]]; then
+                echo "::notice::Not merging #${pr}. It was computed before these landed on ${base}, and its changelog would list them. The next run merges it once their own run has rewritten it."
+                echo "${landed}"
+                continue 2
+              fi
+
               if result="$(gh api -X PUT "repos/${GH_REPO}/pulls/${pr}/merge" -f merge_method=squash -f sha="${head}" --jq '.message' 2>&1)"; then
                 merged=yes
                 echo "#${pr}: ${result}"

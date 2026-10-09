@@ -95,6 +95,7 @@ const merged = { merged: true, message: 'Pull Request successfully merged' }
 const finished = [{ conclusion: 'SUCCESS', name: 'Test', status: 'COMPLETED' }]
 
 const runStep = ({
+  commits = [{ parents: [{ sha: 'b4e7d01' }] }],
   compare = [compareOf()],
   configs = [{ content: base64(config) }],
   merges = [merged],
@@ -109,7 +110,7 @@ const runStep = ({
     // The step sleeps between reads; the cases do not need to.
     fs.writeFileSync(path.join(bin, 'sleep'), '#!/bin/sh\n', { mode: 0o755 })
     const canned = {
-      commit: [{ parents: [{ sha: 'b4e7d01' }] }],
+      commit: commits,
       compare,
       config: configs,
       merge: merges,
@@ -317,6 +318,32 @@ describe('the release merge', () => {
     )
     assert.match(output, /#7: Pull Request successfully merged/)
     assert.doesNotMatch(output, /::warning::/)
+  })
+
+  it('lists what landed again before retrying a refused merge', () => {
+    const { calls, output } = runStep({
+      compare: [
+        compareOf('docs: a note'),
+        compareOf('docs: a note', 'fix: pushed while it merged'),
+      ],
+      merges: ['refused', merged],
+    })
+
+    assert.equal(mergeCalls(calls).length, 1)
+    assert.equal(calls.filter((call) => call.includes('/compare/')).length, 2)
+    assert.match(output, /::notice::Not merging #7\./)
+    assert.match(output, /2222222 fix: pushed while it merged/)
+  })
+
+  it('warns when it cannot read what the pull request was computed from', () => {
+    const { calls, output, status } = runStep({ commits: ['fail'] })
+
+    assert.equal(status, 0)
+    assert.deepEqual(mergeCalls(calls), [])
+    assert.match(
+      output,
+      /::warning::Could not read what #7 was computed from\./,
+    )
   })
 
   it('warns rather than merging when it cannot tell what landed', () => {
