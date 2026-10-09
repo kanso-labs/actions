@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.2.2](https://github.com/kanso-labs/actions/compare/v4.2.1...v4.2.2) (2026-10-09)
+
+
+### Bug Fixes
+
+* **release-please:** list what landed again before retrying a refused merge ([#83](https://github.com/kanso-labs/actions/issues/83)) ([635011d](https://github.com/kanso-labs/actions/commit/635011d944d690249c468e792b08e1a5768f8bc8))
+
 ## [4.2.1](https://github.com/kanso-labs/actions/compare/v4.2.0...v4.2.1) (2026-10-08)
 
 
