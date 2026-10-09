@@ -631,8 +631,8 @@ group, the update type is the largest change in it, so one major anywhere holds
 the whole group. A run that schedules nothing says so in a notice, so a green
 check is never read as a merge on its way.
 
-There is no waiting period, unlike Renovate's release-age grace. These are
-security fixes, and holding one back for days defeats the point of it.
+There is no waiting period. These are security fixes, and holding one back for
+days defeats the point of it.
 
 Auto-merge waits for the required checks, so it can only ever merge what would
 have passed anyway. A consumer whose `Lint` checks the pull request title with
