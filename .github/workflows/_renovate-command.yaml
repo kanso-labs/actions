@@ -58,7 +58,7 @@ jobs:
       # same, which GitHub accepts.
       - name: Mint an application token
         id: app-token
-        uses: actions/create-github-app-token@v3.2.0
+        uses: actions/create-github-app-token@v3.3.0
         with:
           client-id: ${{ secrets.client-id }}
           owner: ${{ github.repository_owner }}
