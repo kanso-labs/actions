@@ -376,3 +376,45 @@ describe('the release merge', () => {
     assert.deepEqual(mergeCalls(calls), [])
   })
 })
+
+// A self-hosted runner may lack gh or jq, which GitHub's runners carry. These
+// cases run the step with nothing on PATH but the stand-ins they name, each
+// failing if it is called, and bash found before PATH is narrowed.
+const bash = spawnSync('bash', ['-c', 'command -v bash'], {
+  encoding: 'utf8',
+}).stdout.trim()
+
+const runWithOnly = (tools) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'release-tools-'))
+  try {
+    for (const [tool, contents] of Object.entries(tools))
+      fs.writeFileSync(path.join(directory, tool), contents, { mode: 0o755 })
+    const result = spawnSync(bash, ['-e', '-c', script], {
+      encoding: 'utf8',
+      env: { ...process.env, GH_REPO: 'kanso-labs/example', PATH: directory },
+    })
+    return { output: result.stdout + result.stderr, status: result.status }
+  } finally {
+    fs.rmSync(directory, { force: true, recursive: true })
+  }
+}
+
+const unused = '#!/bin/sh\necho "unexpected call: $0 $*" >&2\nexit 99\n'
+
+describe('the release merge on a runner without its tools', () => {
+  it('warns and leaves the merge when there is no gh', () => {
+    const { output, status } = runWithOnly({ jq: unused })
+
+    assert.equal(status, 0)
+    assert.match(output, /::warning::This runner has no gh, so the release/)
+    assert.doesNotMatch(output, /command not found|unexpected call/)
+  })
+
+  it('warns and leaves the merge when there is no jq', () => {
+    const { output, status } = runWithOnly({ gh: unused })
+
+    assert.equal(status, 0)
+    assert.match(output, /::warning::This runner has no jq, so the release/)
+    assert.doesNotMatch(output, /command not found|unexpected call/)
+  })
+})

@@ -473,6 +473,35 @@ This needs v3.2.0 or later. Before it, auto-merge read the `prs` output above,
 and a scheduled run that re-confirmed an unchanged release pull request merged
 nothing.
 
+### `runs-on`
+
+What the job runs on, as JSON for `fromJSON()`: `"ubuntu-latest"` unless the
+caller says otherwise. A private repository spends the organization's included
+minutes on GitHub's runners, and once those are gone a job naming one fails
+before it starts, so no release is ever proposed. Such a caller picks a runner
+first and hands its answer on, as it does for its own jobs:
+
+```yaml
+jobs:
+  runner:
+    name: Pick a runner
+    uses: ./.github/workflows/_pick-runner.yaml
+    secrets:
+      token: ${{ secrets.RUNNER_STATUS_TOKEN }}
+
+  release-please:
+    name: Propose releases
+    needs: runner
+    if: ${{ !cancelled() }}
+    uses: kanso-labs/actions/.github/workflows/_release-please.yaml@v4.3.0
+    with:
+      runs-on: ${{ needs.runner.outputs.runs-on || '["self-hosted","Linux"]' }}
+```
+
+The merge step needs `gh` and `jq`, which GitHub's runners carry and a
+self-hosted one may not. Without either it warns and leaves the release pull
+request open for a person to merge, which still releases.
+
 ### `dry-run`
 
 Runs release-please without opening a pull request or cutting a release. It
