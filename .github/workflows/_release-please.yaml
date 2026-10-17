@@ -22,6 +22,15 @@ on:
           something a release caller should set.
         required: false
         type: boolean
+      runs-on:
+        default: '"ubuntu-latest"'
+        description:
+          What the job runs on, as JSON for fromJSON(), so a caller can hand on
+          a runner it picked, either one label as a string or an array of
+          labels. A self-hosted runner needs gh and jq for the merge step, which
+          otherwise leaves the release pull request for a person to merge.
+        required: false
+        type: string
     outputs:
       paths_released:
         description: JSON array of the paths that had a release created.
@@ -74,7 +83,7 @@ on:
 jobs:
   propose:
     name: Propose releases
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(inputs.runs-on) }}
     outputs:
       paths_released: ${{ steps.release.outputs.paths_released }}
       prs: ${{ steps.release.outputs.prs }}
@@ -196,6 +205,15 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
+          # GitHub's runners carry both. A self-hosted one may not, and the
+          # release pull request is already open and correct without them.
+          for tool in gh jq; do
+            if ! command -v "${tool}" >/dev/null; then
+              echo "::warning::This runner has no ${tool}, so the release pull request was not merged. Merge it by hand, or install ${tool} on the runner."
+              exit 0
+            fi
+          done
+
           prs="$(gh pr list --label 'autorelease: pending' --state open --limit 100 --json number,headRefOid,baseRefName --jq '.[] | "\(.number) \(.headRefOid) \(.baseRefName)"')"
           if [[ -z "${prs}" ]]; then
             echo 'No open release pull request to merge.'

@@ -60,3 +60,6 @@ jobs:
     uses: ./.github/workflows/_release-please.yaml
     with:
       dry-run: true
+      # The array a runner picker hands on, where the default is a string, so
+      # the job's fromJSON() meets both shapes.
+      runs-on: '["ubuntu-latest"]'
