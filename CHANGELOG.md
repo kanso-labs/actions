@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.3.0](https://github.com/kanso-labs/actions/compare/v4.2.5...v4.3.0) (2026-10-17)
+
+
+### Features
+
+* **release-please:** run on the runner the caller picks ([#94](https://github.com/kanso-labs/actions/issues/94)) ([bcbb1a5](https://github.com/kanso-labs/actions/commit/bcbb1a5fc50b666ec209fe7dec3eb62d82482e8b))
+
 ## [4.2.5](https://github.com/kanso-labs/actions/compare/v4.2.4...v4.2.5) (2026-10-14)
 
 
