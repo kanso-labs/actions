@@ -551,7 +551,7 @@ jobs:
     uses: kanso-labs/actions/.github/workflows/_renovate-command.yaml@v4.0.0
     secrets:
       client-id: ${{ secrets.RENOVATE_CLIENT_ID }}
-      private-key: ${{ secrets.RENOVATE_APP_PRIVATE_KEY }}
+      private-key: ${{ secrets.RENOVATE_PRIVATE_KEY }}
 ```
 
 | Comment                                                     | Effect                                                               |
