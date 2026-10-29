@@ -1,0 +1,108 @@
+name: Sync Labels
+
+on:
+  workflow_call:
+    inputs:
+      delete-retired:
+        default: false
+        description:
+          Delete the labels labels.yaml retires, as well as creating and
+          updating the ones it keeps. Off by default, because a repository whose
+          project has not moved to the organization's project standard still
+          uses the retired kind, area and platform labels. Off, the run names
+          what it would delete in a notice.
+        required: false
+        type: boolean
+
+# Every caller needs the same single scope, since labels are written through
+# the issues permission, so naming it here turns a forgotten grant into an
+# immediate error rather than a run that fails on its first write.
+permissions:
+  issues: write
+
+jobs:
+  sync:
+    name: Sync the labels
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # labels.yaml is read from the .github repository's main branch over the
+      # public raw URL, which needs no token and works for a private caller as
+      # much as a public one. The download lands in a file before yq reads it,
+      # because a failed download piped straight into yq would parse as an
+      # empty list and sync nothing, successfully.
+      #
+      # Every colour must arrive as six hex digits in a string. YAML reads an
+      # unquoted 008672 as the number 8672, and the run stops on that before
+      # any write rather than giving a label the wrong colour.
+      #
+      # A kept label is created when it is missing and edited when its colour
+      # or description differ. A retired one matches by name, or by prefix when
+      # the pattern ends in *, and is never one the kept list names. A label in
+      # neither list is left alone: Dependabot creates ecosystem labels such as
+      # javascript for itself, and deleting them only makes it create them
+      # again.
+      - name: Sync the labels
+        env:
+          DELETE_RETIRED: ${{ inputs.delete-retired }}
+          GH_TOKEN: ${{ github.token }}
+          LABELS_URL: https://raw.githubusercontent.com/kanso-labs/.github/main/labels.yaml
+          REPO: ${{ github.repository }}
+        run: |
+          yaml="$RUNNER_TEMP/labels.yaml"
+          labels="$RUNNER_TEMP/labels.json"
+          curl --fail --location --show-error --silent --output "$yaml" "$LABELS_URL"
+          yq --output-format=json '.' "$yaml" > "$labels"
+          if ! jq -e '(.labels | type == "array") and (.retired | type == "array") and all(.labels[]; (.name | type == "string") and (.color | type == "string" and test("^[0-9a-fA-F]{6}$")))' "$labels" > /dev/null; then
+            echo "::error::$LABELS_URL needs a labels list whose every entry has a name and a quoted six-digit colour, and a retired list."
+            exit 1
+          fi
+
+          say() {
+            echo "$1"
+            echo "- $1" >> "$GITHUB_STEP_SUMMARY"
+          }
+
+          existing="$(gh label list --repo "$REPO" --limit 1000 --json name,color,description)"
+
+          while IFS= read -r label; do
+            name="$(jq -r '.name' <<< "$label")"
+            color="$(jq -r '.color | ascii_downcase' <<< "$label")"
+            description="$(jq -r '.description // ""' <<< "$label")"
+            current="$(jq -c --arg name "$name" 'map(select((.name | ascii_downcase) == ($name | ascii_downcase))) | first // empty' <<< "$existing")"
+            if [[ -z "$current" ]]; then
+              gh label create "$name" --repo "$REPO" --color "$color" --description "$description"
+              say "Created \`$name\`"
+            elif [[ "$(jq -r '.name' <<< "$current")" != "$name" || "$(jq -r '.color | ascii_downcase' <<< "$current")" != "$color" || "$(jq -r '.description' <<< "$current")" != "$description" ]]; then
+              gh label edit "$(jq -r '.name' <<< "$current")" --repo "$REPO" --name "$name" --color "$color" --description "$description"
+              say "Updated \`$name\`"
+            else
+              echo "Unchanged $name"
+            fi
+          done < <(jq -c '.labels[]' "$labels")
+
+          retire=()
+          while IFS= read -r name; do
+            if jq -e --arg name "$name" 'any(.labels[]; (.name | ascii_downcase) == ($name | ascii_downcase))' "$labels" > /dev/null; then
+              continue
+            fi
+            while IFS= read -r pattern; do
+              if [[ "$pattern" == *'*' && "$name" == "${pattern%\*}"* ]] || [[ "$name" == "$pattern" ]]; then
+                retire+=("$name")
+                break
+              fi
+            done < <(jq -r '.retired[]' "$labels")
+          done < <(jq -r '.[].name' <<< "$existing")
+
+          if [[ ${#retire[@]} -eq 0 ]]; then
+            echo "No retired labels here"
+          elif [[ "$DELETE_RETIRED" == true ]]; then
+            for name in "${retire[@]}"; do
+              gh label delete "$name" --repo "$REPO" --yes
+              say "Deleted \`$name\`"
+            done
+          else
+            list="$(printf '%s, ' "${retire[@]}")"
+            echo "::notice::delete-retired is off, so ${#retire[@]} retired labels stay: ${list%, }"
+            say "Kept ${#retire[@]} retired labels, since delete-retired is off: ${list%, }"
+          fi

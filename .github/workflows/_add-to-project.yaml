@@ -1,0 +1,68 @@
+name: Add to Project
+
+on:
+  workflow_call:
+    inputs:
+      project-url:
+        description:
+          URL of the organization project the calling repository's issues belong
+          on, such as https://github.com/orgs/kanso-labs/projects/6.
+        required: true
+        type: string
+      skip-bots:
+        default: true
+        description:
+          Leave out issues a bot opened, such as Renovate's Dependency
+          Dashboard, which the organization's project standard keeps off every
+          project. A caller whose bot files real work items passes false.
+        required: false
+        type: boolean
+    secrets:
+      client-id:
+        description:
+          Client ID of a GitHub App installed on the calling repository and
+          granted Organization projects at read and write. There is no
+          GITHUB_TOKEN fallback, because GITHUB_TOKEN cannot write to an
+          organization project under any permissions.
+        required: true
+      private-key:
+        description: Private key of the GitHub App named above.
+        required: true
+
+# Every write goes through the application token minted below, so GITHUB_TOKEN
+# is never used and needs nothing. A called workflow may always request less
+# than its caller granted, so an empty block is safe for every caller.
+permissions: {}
+
+jobs:
+  add:
+    name: Add the issue to its project
+    # Only an issue event carries an issue to add, and a bot's issue stays off
+    # the project unless the caller asks for it.
+    if: >-
+      github.event_name == 'issues' && (!inputs.skip-bots ||
+      github.event.issue.user.type != 'Bot')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # Scoped to the calling repository and to organization projects. An app
+      # that was never granted Organization projects fails here, naming the
+      # permission, rather than reaching the next step and adding nothing.
+      - name: Mint an application token
+        id: app-token
+        uses: actions/create-github-app-token@v3.3.0
+        with:
+          client-id: ${{ secrets.client-id }}
+          owner: ${{ github.repository_owner }}
+          permission-issues: read
+          permission-organization-projects: write
+          private-key: ${{ secrets.private-key }}
+          repositories: ${{ github.event.repository.name }}
+
+      # Adding an issue that is already on the project returns its existing
+      # item, so a reopened issue or a re-run does no harm.
+      - name: Add the issue to the project
+        uses: actions/add-to-project@v2.0.0
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          project-url: ${{ inputs.project-url }}
