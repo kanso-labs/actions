@@ -1,5 +1,17 @@
 # Changelog
 
+## [4.4.0](https://github.com/kanso-labs/actions/compare/v4.3.1...v4.4.0) (2026-10-29)
+
+
+### Features
+
+* add reusable workflows to add issues to projects and sync labels ([#102](https://github.com/kanso-labs/actions/issues/102)) ([8c2091f](https://github.com/kanso-labs/actions/commit/8c2091f0cf7f5bef0c3bad526d84043baeaf85f3))
+
+
+### Dependencies
+
+* update node.js to v24.22.2 ([#100](https://github.com/kanso-labs/actions/issues/100)) ([4308146](https://github.com/kanso-labs/actions/commit/4308146bff11b2f024b8515da2278166e4fadc2c))
+
 ## [4.3.1](https://github.com/kanso-labs/actions/compare/v4.3.0...v4.3.1) (2026-10-21)
 
 
