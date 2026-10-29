@@ -1,0 +1,25 @@
+name: Add to Project
+
+# Puts every issue opened or reopened here on the Kanso Labs project, as the
+# organization's project standard asks. The shared workflow skips issues a bot
+# opens, such as Renovate's Dependency Dashboard.
+# This repository calls its own copy by path rather than by tag, for the reason
+# release-please.yaml does: a pinned self-reference is a release loop.
+
+on:
+  issues:
+    types:
+      - opened
+      - reopened
+
+permissions: {}
+
+jobs:
+  add-to-project:
+    name: Add the issue to its project
+    uses: ./.github/workflows/_add-to-project.yaml
+    with:
+      project-url: https://github.com/orgs/kanso-labs/projects/11
+    secrets:
+      client-id: ${{ secrets.RENOVATE_CLIENT_ID }}
+      private-key: ${{ secrets.RENOVATE_PRIVATE_KEY }}
