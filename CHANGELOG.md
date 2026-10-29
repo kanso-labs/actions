@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.4.1](https://github.com/kanso-labs/actions/compare/v4.4.0...v4.4.1) (2026-10-29)
+
+
+### Dependencies
+
+* update node.js to v26 ([#99](https://github.com/kanso-labs/actions/issues/99)) ([028dbfb](https://github.com/kanso-labs/actions/commit/028dbfb0ac4bbf989e1e4aaf55689e1435f9cf5b))
+
 ## [4.4.0](https://github.com/kanso-labs/actions/compare/v4.3.1...v4.4.0) (2026-10-29)
 
 
