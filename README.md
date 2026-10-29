@@ -9,15 +9,17 @@ them to consume these. A private consumer would need
 
 ## What is here
 
-| Thing                                                                          | Kind              | Solves                                                                        |
-| ------------------------------------------------------------------------------ | ----------------- | ----------------------------------------------------------------------------- |
-| [`lint-workflows`](lint-workflows)                                             | Composite action  | Running actionlint, pinned, in every repository that has workflows            |
-| [`setup-node`](setup-node)                                                     | Composite action  | The Node setup preamble repeated in every Node CI job                         |
-| [`upstream-changelog`](upstream-changelog)                                     | Composite action  | Getting an updated dependency's own release notes into a consumer's changelog |
-| [`_publish-npm.yaml`](.github/workflows/_publish-npm.yaml)                     | Reusable workflow | Publishing a package to npm and to GitHub Packages, after a release is cut    |
-| [`_release-please.yaml`](.github/workflows/_release-please.yaml)               | Reusable workflow | Proposing releases, with a token whose pull requests run CI                   |
-| [`_renovate-command.yaml`](.github/workflows/_renovate-command.yaml)           | Reusable workflow | Answering `@renovate rebase` on a pull request, the way Dependabot does       |
-| [`_dependabot-auto-merge.yaml`](.github/workflows/_dependabot-auto-merge.yaml) | Reusable workflow | Merging Dependabot's minor and patch fixes once checks pass, as Renovate's do |
+| Thing                                                                          | Kind              | Solves                                                                           |
+| ------------------------------------------------------------------------------ | ----------------- | -------------------------------------------------------------------------------- |
+| [`lint-workflows`](lint-workflows)                                             | Composite action  | Running actionlint, pinned, in every repository that has workflows               |
+| [`setup-node`](setup-node)                                                     | Composite action  | The Node setup preamble repeated in every Node CI job                            |
+| [`upstream-changelog`](upstream-changelog)                                     | Composite action  | Getting an updated dependency's own release notes into a consumer's changelog    |
+| [`_publish-npm.yaml`](.github/workflows/_publish-npm.yaml)                     | Reusable workflow | Publishing a package to npm and to GitHub Packages, after a release is cut       |
+| [`_release-please.yaml`](.github/workflows/_release-please.yaml)               | Reusable workflow | Proposing releases, with a token whose pull requests run CI                      |
+| [`_renovate-command.yaml`](.github/workflows/_renovate-command.yaml)           | Reusable workflow | Answering `@renovate rebase` on a pull request, the way Dependabot does          |
+| [`_dependabot-auto-merge.yaml`](.github/workflows/_dependabot-auto-merge.yaml) | Reusable workflow | Merging Dependabot's minor and patch fixes once checks pass, as Renovate's do    |
+| [`_add-to-project.yaml`](.github/workflows/_add-to-project.yaml)               | Reusable workflow | Putting every new issue on its project, from every repository the project covers |
+| [`_sync-labels.yaml`](.github/workflows/_sync-labels.yaml)                     | Reusable workflow | Keeping a repository's labels to the organization's `labels.yaml`                |
 
 ## Consuming them
 
@@ -698,6 +700,119 @@ itself is what is being tried out, then move it to a tag.
 A pull request Dependabot opened before the caller merged runs it on its next
 event: commenting `@dependabot rebase` is the one that is both Dependabot's own
 and in your hands.
+
+## `_add-to-project.yaml`
+
+The organization's
+[project standard](https://github.com/kanso-labs/.github/blob/main/PROJECTS.md)
+puts every issue in a project's repositories on that project. GitHub's built-in
+auto-add workflow covers one repository per project on GitHub Free, so a project
+spanning several, a web app with its native app and the package they share, left
+the others to be added by hand, and they were not. Each repository that calls
+this workflow adds its own issues.
+
+```yaml
+name: Add to Project
+
+on:
+  issues:
+    types:
+      - opened
+      - reopened
+
+permissions: {}
+
+jobs:
+  add-to-project:
+    name: Add the issue to its project
+    uses: kanso-labs/actions/.github/workflows/_add-to-project.yaml@v4.4.0
+    with:
+      project-url: https://github.com/orgs/kanso-labs/projects/6
+    secrets:
+      client-id: ${{ secrets.RENOVATE_CLIENT_ID }}
+      private-key: ${{ secrets.RENOVATE_PRIVATE_KEY }}
+```
+
+Adding an issue that is already on the project changes nothing, so a reopened
+issue, or one somebody added by hand first, is safe.
+
+### The app needs Organization projects
+
+`GITHUB_TOKEN` cannot write to an organization project under any permissions, so
+both secrets are required and there is no fallback. The app behind them needs
+**Organization projects: Read and write** among its organization permissions,
+and the organization has to accept that change before the first run.
+
+The token is minted with that permission and nothing beyond reading the calling
+repository's issues. An app that lacks it fails at that step with a message
+naming the permission, rather than reaching the next one and adding nothing.
+
+### Issues a bot opens stay off
+
+The standard keeps bot-filed issues such as Renovate's Dependency Dashboard off
+every project, so `skip-bots` defaults to true and an issue whose author is a
+bot account is skipped before a runner starts. A repository whose bot files real
+work items passes `skip-bots: false`.
+
+### Adopting it takes two merges, not one
+
+`issues` is a repository-level event, so GitHub runs the copy of the caller on
+the default branch and ignores every other copy. A repository adopting this
+merges the caller first and finds out whether it works when the next issue is
+opened. Point the `uses:` ref at a branch of this repository for that first
+merge if the workflow itself is what is being tried out, then move it to a tag.
+
+## `_sync-labels.yaml`
+
+The organization keeps one list of labels, `labels.yaml` in
+[`kanso-labs/.github`](https://github.com/kanso-labs/.github): the few every
+repository carries, and the ones it no longer does. This workflow brings the
+calling repository in line with it.
+
+```yaml
+name: Sync Labels
+
+on:
+  schedule:
+    - cron: '23 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  sync-labels:
+    name: Sync the labels
+    uses: kanso-labs/actions/.github/workflows/_sync-labels.yaml@v4.4.0
+```
+
+| Label                        | Effect                                                                |
+| ---------------------------- | --------------------------------------------------------------------- |
+| Listed under `labels`        | Created if missing, edited if its name case, colour or wording differ |
+| Matching a `retired` pattern | Deleted with `delete-retired: true`, named in a notice otherwise      |
+| In neither list              | Left alone                                                            |
+
+A retired pattern matches a name exactly, or every name with its prefix when it
+ends in `*`. A label the kept list names is never retired, whatever pattern
+matches it.
+
+Labels in neither list are left alone on purpose. Dependabot creates ecosystem
+labels such as `javascript` for itself, and deleting them would only make it
+create them again on its next pull request.
+
+### `delete-retired` is off by default
+
+The retired list includes `kind:*`, `area:*` and `platform:*`, which a project
+that has not yet moved to the standard still reads. Deleting them strips them
+from every issue that carries them, so a repository turns deletion on only once
+its project has migrated. Until then each run names what it would delete.
+
+### It reads `labels.yaml` from `main`
+
+The file is read over the public raw URL, with no token and no checkout, so a
+change to it reaches every caller on its next run, with nothing to pin. A colour
+has to be quoted there: YAML reads an unquoted `008672` as the number 8672, so
+the run stops before any write when a colour is not six hex digits in a string.
 
 ## Releasing this repository
 
