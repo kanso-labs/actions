@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.5.0](https://github.com/kanso-labs/actions/compare/v4.4.1...v4.5.0) (2026-11-05)
+
+
+### Features
+
+* set issues a release closed back to Done on their projects ([#105](https://github.com/kanso-labs/actions/issues/105)) ([884dc7d](https://github.com/kanso-labs/actions/commit/884dc7dd93d07cfd110dafe890105025cd78bd7b))
+
 ## [4.4.1](https://github.com/kanso-labs/actions/compare/v4.4.0...v4.4.1) (2026-10-29)
 
 
