@@ -295,3 +295,159 @@ jobs:
               echo "::warning::Could not merge #${pr}. Merge it by hand."
             fi
           done <<< "${prs}"
+
+      # Its own token rather than the one above, which carries everything the
+      # app was granted, narrowed to what the step after next reads and
+      # writes. An app never granted Organization projects fails to mint here,
+      # and the next step warns rather than failing a run whose release is
+      # already done.
+      - name: Mint a token for the organization projects
+        id: projects-token
+        if: env.CLIENT_ID != '' && !inputs.dry-run
+        continue-on-error: true
+        uses: actions/create-github-app-token@v3.3.0
+        with:
+          client-id: ${{ secrets.client-id }}
+          permission-issues: read
+          permission-organization-projects: write
+          permission-pull-requests: read
+          private-key: ${{ secrets.private-key }}
+
+      - name: Warn that no token for the organization projects was minted
+        if: steps.projects-token.outcome == 'failure'
+        run: |
+          echo '::warning::Could not mint a token for the organization projects, so the issues the latest releases closed were not set back to Done. Grant the GitHub App Organization projects at read and write.'
+
+      # A release pull request's changelog repeats each commit's "Closes #N"
+      # footer as "closes #N", and GitHub reads that as the pull request
+      # closing those issues, though their own pull requests closed them
+      # already. Linking a pull request to an issue fires the project workflow
+      # "Pull request linked to issue", which the organization's project
+      # standard points at In review, and nothing moves a closed issue on from
+      # there: "Item closed" fired when it closed. So the issues a release
+      # shipped sat closed at In review on their project.
+      # kanso-labs/react-native-daily#231 left nine that way on 2026-11-03.
+      #
+      # This sets them back. For the release pull requests merged most
+      # recently, every closed issue they name is set to Done on each project
+      # it is on, wherever its Status is something else and that project's
+      # Status has a Done option. Open issues are left alone, since a reopened
+      # one is not done, and so are archived items, which no view shows.
+      #
+      # It runs on every run rather than only after this one merges, because
+      # a person may have merged the release pull request, and the run that
+      # merge starts is the first to find it merged. The link fired when
+      # release-please last wrote the pull request, well before either.
+      #
+      # Both labels, because a merged release pull request keeps
+      # autorelease: pending until a later run tags it. Five of each covers
+      # every release since the last run with room to spare, and an issue
+      # already Done costs nothing but the read.
+      #
+      # It is a script rather than gh and jq, which the merge above uses,
+      # because the caller this exists for runs on a self-hosted runner that
+      # has neither, and a release there already waits for a person to merge
+      # it. github-script runs on the Node every runner carries for actions.
+      - name: Set released issues back to Done
+        if: steps.projects-token.outputs.token != ''
+        uses: actions/github-script@v9.0.0
+        with:
+          github-token: ${{ steps.projects-token.outputs.token }}
+          script: |
+            const read = `query($owner: String!, $repo: String!, $label: String!) {
+              repository(owner: $owner, name: $repo) {
+                pullRequests(labels: [$label], states: MERGED, first: 5, orderBy: {field: CREATED_AT, direction: DESC}) {
+                  nodes {
+                    number
+                    closingIssuesReferences(first: 100) {
+                      totalCount
+                      nodes {
+                        number
+                        state
+                        projectItems(first: 20, includeArchived: false) {
+                          nodes {
+                            id
+                            status: fieldValueByName(name: "Status") {
+                              ... on ProjectV2ItemFieldSingleSelectValue {
+                                name
+                              }
+                            }
+                            project {
+                              id
+                              title
+                              field(name: "Status") {
+                                ... on ProjectV2SingleSelectField {
+                                  id
+                                  options {
+                                    id
+                                    name
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }`
+            const write = `mutation($project: ID!, $item: ID!, $field: ID!, $option: String!) {
+              updateProjectV2ItemFieldValue(input: {projectId: $project, itemId: $item, fieldId: $field, value: {singleSelectOptionId: $option}}) {
+                projectV2Item {
+                  id
+                }
+              }
+            }`
+
+            const pulls = new Map()
+            for (const label of ['autorelease: pending', 'autorelease: tagged']) {
+              try {
+                const answer = await github.graphql(read, { ...context.repo, label })
+                for (const pull of answer.repository.pullRequests.nodes)
+                  pulls.set(pull.number, pull)
+              } catch (error) {
+                core.warning(`Could not read the merged release pull requests labelled ${label}: ${error.message}`)
+              }
+            }
+            if (pulls.size === 0) {
+              core.info('No merged release pull request to check.')
+              return
+            }
+
+            for (const [number, pull] of [...pulls].sort(([a], [b]) => a - b)) {
+              const closing = pull.closingIssuesReferences
+              if (closing.totalCount > closing.nodes.length)
+                core.warning(`#${number} closes ${closing.totalCount} issues, more than the ${closing.nodes.length} read here, so the rest were not checked.`)
+
+              const stale = closing.nodes
+                .filter((issue) => issue.state === 'CLOSED')
+                .flatMap((issue) =>
+                  issue.projectItems.nodes.map((item) => ({
+                    done: item.project.field?.options?.find((option) => option.name === 'Done'),
+                    issue,
+                    item,
+                  })),
+                )
+                .filter(({ done, item }) => done && item.status?.name !== 'Done')
+              if (stale.length === 0) {
+                core.info(`#${number}: nothing to set back to Done.`)
+                continue
+              }
+
+              for (const { done, issue, item } of stale) {
+                const where = `#${issue.number} back to Done on ${item.project.title}`
+                try {
+                  await github.graphql(write, {
+                    field: item.project.field.id,
+                    item: item.id,
+                    option: done.id,
+                    project: item.project.id,
+                  })
+                  core.info(`#${number}: set ${where}.`)
+                } catch (error) {
+                  core.warning(`Could not set ${where}: ${error.message}`)
+                }
+              }
+            }
