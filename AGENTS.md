@@ -203,10 +203,12 @@ they find the script.
 on a release pull request linking itself to issues closed long before, and it
 writes to organization projects, and a pull request here may arrange neither.
 [`tests/release-please-released-issues.test.mjs`](tests/release-please-released-issues.test.mjs)
-runs it the same way, against a stand-in `gh` that answers GraphQL from canned
-pull requests. What it cannot cover is the token minted for it, which only a
-real run with the application installed exercises — canary that by hand as
-below.
+cuts its `actions/github-script` body out by the step's name and runs it against
+a stand-in `github` that answers GraphQL from canned pull requests. It is a
+script rather than `gh` and `jq` because react-native-daily's self-hosted runner
+has neither, which a canary found. What the tests cannot cover is the token
+minted for it, which only a real run with the application installed exercises —
+canary that by hand as below.
 
 **The merge's notion of a listed commit has to stay release-please's.** It
 copies `filterCommits` in release-please's `src/util/filter-commits.ts`: a type

@@ -407,6 +407,8 @@ write** and read access to the repository's issues and pull requests. An app
 without that permission makes the run warn and skip this, never fail, since the
 release is done either way. Dry runs skip it, as does the `GITHUB_TOKEN`
 fallback, which cannot write to an organization project under any permissions.
+It runs through `actions/github-script`, so unlike the merge it needs neither
+`gh` nor `jq` on a self-hosted runner.
 
 ### Permissions
 
