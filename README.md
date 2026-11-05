@@ -386,6 +386,28 @@ all rather than an empty array. A run that merely re-confirms a release pull
 request already open therefore finds nothing there to merge, while the label is
 on it either way.
 
+**Setting released issues back to Done.** A release pull request's changelog
+repeats each commit's `Closes #N` footer as "closes #N", and GitHub reads that
+as the pull request closing those issues, though their own pull requests closed
+them already. The link fires the project workflow "Pull request linked to
+issue", which the organization's project standard points at In review, and
+nothing moves a closed issue on from there. So every issue a release shipped
+used to sit closed at In review on its project.
+
+Every run with an application token now reads the five release pull requests
+merged most recently under each of `autorelease: pending` and
+`autorelease: tagged`, and sets each closed issue they name to Done on every
+project it is on, wherever its Status is something else and that project's
+Status has a Done option. Open issues and archived items are left alone. It runs
+on every run, not only after this one merges, so a release pull request a person
+merged is covered by the run that merge starts.
+
+It mints a token of its own for this, with **Organization projects: Read and
+write** and read access to the repository's issues and pull requests. An app
+without that permission makes the run warn and skip this, never fail, since the
+release is done either way. Dry runs skip it, as does the `GITHUB_TOKEN`
+fallback, which cannot write to an organization project under any permissions.
+
 ### Permissions
 
 The workflow deliberately declares no `permissions` block, because what the
