@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.5.1](https://github.com/kanso-labs/actions/compare/v4.5.0...v4.5.1) (2026-11-07)
+
+
+### Dependencies
+
+* update actions/add-to-project action to v2.0.1 ([#107](https://github.com/kanso-labs/actions/issues/107)) ([59343b2](https://github.com/kanso-labs/actions/commit/59343b2d573e844f7704c0f823a0b25a3e620c6f))
+
 ## [4.5.0](https://github.com/kanso-labs/actions/compare/v4.4.1...v4.5.0) (2026-11-05)
 
 
