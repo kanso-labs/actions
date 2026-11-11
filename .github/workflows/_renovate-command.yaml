@@ -1,4 +1,4 @@
-name: Renovate Command
+name: Renovate command
 
 on:
   workflow_call:

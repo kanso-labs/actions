@@ -169,10 +169,10 @@ see the trap below before copying the pattern into one.
 
 **`upstream-changelog` has unit tests instead, and the difference is not a
 preference.** A live run of it needs an open Renovate pull request carrying
-release notes, which exists in a consumer and never here. `Run the unit tests`
-in [`test.yaml`](.github/workflows/test.yaml) covers the parsing and the
-rewriting against a body in Renovate's own layout, which is where every bug it
-has had so far lived.
+release notes, which exists in a consumer and never here. `Test` in
+[`test.yaml`](.github/workflows/test.yaml) covers the parsing and the rewriting
+against a body in Renovate's own layout, which is where every bug it has had so
+far lived.
 
 What no test here covers is release-please agreeing: that the block parses, that
 the lines land under the right package, and that the bump stays a patch. That

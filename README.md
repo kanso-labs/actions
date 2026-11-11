@@ -657,7 +657,7 @@ and those were the pull requests left waiting for a person. This workflow turns
 auto-merge on for them, under the same rule.
 
 ```yaml
-name: Dependabot Auto-merge
+name: Dependabot auto-merge
 
 on:
   pull_request:
@@ -736,7 +736,7 @@ the others to be added by hand, and they were not. Each repository that calls
 this workflow adds its own issues.
 
 ```yaml
-name: Add to Project
+name: Add to project
 
 on:
   issues:
@@ -794,7 +794,7 @@ repository carries, and the ones it no longer does. This workflow brings the
 calling repository in line with it.
 
 ```yaml
-name: Sync Labels
+name: Sync labels
 
 on:
   schedule:
