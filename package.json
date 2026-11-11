@@ -7,9 +7,11 @@
   "scripts": {
     "format": "prettier --write .",
     "lint": "prettier --check .",
-    "test": "node --test"
+    "test": "node --test",
+    "test:coverage": "c8 --all --include upstream-changelog/upstream-changelog.mjs --reporter text --reporter cobertura node --test"
   },
   "devDependencies": {
+    "c8": "12.0.0",
     "prettier": "3.10.0"
   }
 }
