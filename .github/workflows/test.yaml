@@ -4,6 +4,12 @@ on:
   pull_request:
     branches:
       - main
+  # The push is for the coverage report. A pull request's coverage is compared
+  # with the report uploaded for the head of main, so without one there is
+  # nothing for a drop to be measured against.
+  push:
+    branches:
+      - main
 
 permissions:
   contents: read
@@ -33,6 +39,11 @@ jobs:
   test:
     name: Run the unit tests
     runs-on: ubuntu-latest
+    # Only this job writes: the upload below needs code-quality, and nothing
+    # else in this workflow should hold it.
+    permissions:
+      code-quality: write
+      contents: read
     steps:
       - name: Check out repository
         uses: actions/checkout@v7.0.1
@@ -41,7 +52,31 @@ jobs:
         uses: ./setup-node
 
       - name: Run the unit tests
-        run: npm test
+        run: npm run test:coverage
+
+      # Coverage counts upstream-changelog.mjs alone, which is the only source
+      # file here. `test:coverage` names it with --include and --all so that it
+      # is counted as zero if no test ever loads it, rather than missing from
+      # the total. The tests under tests/ cut a script out of a workflow and
+      # run it with a stand-in gh, so the shell and github-script they cover
+      # has no file for a report to point at.
+      #
+      # c8 rather than `node --test --experimental-test-coverage`, because the
+      # action takes a Cobertura file and Node's built-in reporters write only
+      # lcov and its own table.
+      #
+      # fail-on-error is false because the action defaults it to true, and
+      # waits for GitHub to process the report, which is a public preview
+      # service. An outage there should not turn a green test run red. The
+      # error is still annotated either way; a missing report or an invalid
+      # input still fails the step.
+      - name: Upload coverage report
+        uses: actions/upload-code-coverage@v1.4.4
+        with:
+          fail-on-error: false
+          file: coverage/cobertura-coverage.xml
+          label: code-coverage/c8
+          language: JavaScript
 
   # _release-please.yaml is the one thing here that nothing exercised. The
   # composite action has a live smoke test in lint.yaml, but this workflow only
@@ -61,6 +96,8 @@ jobs:
   # not any more.
   release-please:
     name: Dry run release-please
+    # Not on a push: release-please.yaml runs the real thing there.
+    if: github.event_name == 'pull_request'
     permissions:
       contents: read
     uses: ./.github/workflows/_release-please.yaml

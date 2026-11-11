@@ -10,3 +10,6 @@ node_modules/
 # core.excludesfile — so `npm run lint`, which is `prettier --check .`, would
 # otherwise fail on drafts this repository does not own.
 .context/
+
+# Written by `npm run test:coverage`, and uploaded from CI.
+coverage/
