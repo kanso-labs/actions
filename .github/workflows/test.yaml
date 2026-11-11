@@ -37,7 +37,7 @@ jobs:
   # _sync-labels.yaml's script, because a live run rewrites the labels of
   # whichever repository runs it, which here would be this one on every push.
   test:
-    name: Run the unit tests
+    name: Test
     runs-on: ubuntu-latest
     # Only this job writes: the upload below needs code-quality, and nothing
     # else in this workflow should hold it.
