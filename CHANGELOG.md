@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.5.3](https://github.com/kanso-labs/actions/compare/v4.5.2...v4.5.3) (2026-11-11)
+
+
+### Dependencies
+
+* update node.js to v26.13.1 ([#112](https://github.com/kanso-labs/actions/issues/112)) ([fc9cbc0](https://github.com/kanso-labs/actions/commit/fc9cbc0ea7d3bb553916d46c8ffde6ca5886d55d))
+
 ## [4.5.2](https://github.com/kanso-labs/actions/compare/v4.5.1...v4.5.2) (2026-11-11)
 
 
