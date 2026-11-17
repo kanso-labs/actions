@@ -4,11 +4,11 @@ Guidance for coding agents working in this repository.
 
 ## What this is
 
-The shared CI surface for the `kanso-labs` organization: composite actions under
-`actions/`, reusable workflows under `.github/workflows/` with a leading
-underscore. [`README.md`](README.md) documents what each one does and how to
-call it — read it first, and keep it correct when you change behaviour, because
-it is what consumers read.
+The shared CI surface for the `kanso-labs` organization: composite actions in
+their own folders at the repository root, reusable workflows under
+`.github/workflows/` with a leading underscore. [`README.md`](README.md)
+documents what each one does and how to call it — read it first, and keep it
+correct when you change behaviour, because it is what consumers read.
 
 **This file does not name the consumers, deliberately.** Which repository calls
 what is a fact the caller owns and changes without telling anyone here, so a
@@ -85,7 +85,7 @@ Consumers pin exact tags — `@v1.2.3`, never `@main` or `@v1`. Renovate opens t
 bump pull requests.
 
 That is what makes an error here survivable: it reaches one repository at a
-time, in a pull request, rather than all four the moment it merges. Do not
+time, in a pull request, rather than all of them the moment it merges. Do not
 "simplify" a consumer to `@main`.
 
 release-please owns `version.txt` and `.release-please-manifest.json`. Nobody
@@ -153,8 +153,9 @@ it claims — most of what has gone wrong in CI here was valid YAML.
 There is no `SessionStart` hook here, so `npm ci` is yours to run before
 `npm run lint`. Run it under the Node version in `.tool-versions`, which is what
 CI resolves; if `node --version` disagrees, prefix the command:
-`mise exec node@24.21.0 -- npm ci`. An older npm rewrites the lockfile as it
-installs, dropping platform entries a Linux runner needs.
+`mise exec node@$(awk '/^nodejs/{print $2}' .tool-versions) -- npm ci`. An older
+npm rewrites the lockfile as it installs, dropping platform entries a Linux
+runner needs.
 
 **Two of the three composite actions have a live smoke test**, in
 [`lint.yaml`](.github/workflows/lint.yaml): `check-formatting` calls
@@ -346,7 +347,7 @@ move it into `_release-please.yaml` to save the repetition. GitHub documents
 `concurrency` at the caller and says nothing either way about a group declared
 in a called workflow, so moving it there would bet a guard that only matters
 during a rare race on undocumented behaviour — and if it turned out to be a
-no-op, all three consumers would lose it silently and simultaneously.
+no-op, every consumer would lose it silently and simultaneously.
 
 **The `secrets` context is not available to an `if:` condition.** Not at job
 level and not at step level. Checking whether a secret was supplied means
