@@ -6,7 +6,7 @@
       "datasourceTemplate": "{{{datasource}}}",
       "description": "Tool versions pinned as a composite action input default, annotated above the default",
       "extractVersionTemplate": "^v(?<version>.*)$",
-      "managerFilePatterns": ["/^actions/.+/action\\.yaml$/"],
+      "managerFilePatterns": ["/^[^/]+/action\\.yaml$/"],
       "matchStrings": [
         "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\s+default: (?<currentValue>\\S+)"
       ]
