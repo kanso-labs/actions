@@ -9,16 +9,15 @@ on:
   # always reflect main — and this is the only trigger that turns merging on,
   # through the auto-merge input below.
   #
-  # 09:00 UTC is 06:00 America/Sao_Paulo, the timezone Renovate runs on, so the
-  # day starts with yesterday's release already cut. GitHub queues scheduled
-  # runs hardest on the hour and may start this one a few minutes late, which
-  # for a daily release costs nothing.
+  # 12:15 UTC is 09:15 America/Sao_Paulo, the timezone Renovate runs on. That
+  # is when the run is due, not when it starts: GitHub has started these runs
+  # hours late, as README.md measures, which for a daily release costs nothing.
   #
   # GitHub disables a scheduled workflow after 60 days without repository
   # activity. Renovate's commits keep this one alive, but that is the shape a
   # silent stop to releasing would take.
   schedule:
-    - cron: '0 9 * * *'
+    - cron: '15 12 * * *'
   # Neither trigger above can be asked to look again now: one waits for a push,
   # the other for the clock. That matters when a release pull request has to be
   # discarded, because release-please rewrites one only when the release it
