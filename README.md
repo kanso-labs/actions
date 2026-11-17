@@ -454,7 +454,7 @@ on:
     branches:
       - main
   schedule:
-    - cron: '0 9 * * *'
+    - cron: '15 12 * * *'
   workflow_dispatch:
 
 jobs:
@@ -483,7 +483,7 @@ Two things about scheduled workflows are worth knowing before relying on one.
 **A scheduled run starts hours after its cron, not minutes.** Across the 171
 scheduled release runs in this organization from 2026-08-28 to 2026-10-07, all
 on `0 9 * * *`, the earliest started 3h11m after the cron, the median 5h03m and
-the latest 11h41m. So the day's release merges around midday UTC or later, while
+the latest 11h41m. So the day's release merges hours after its cron, while
 people are merging, rather than before anyone is at work. GitHub suggests moving
 a cron off the top of the hour to spread its load, and nothing measured here
 says that shortens a delay of hours. Re-measure before relying on these numbers:
