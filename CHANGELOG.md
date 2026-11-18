@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.5.5](https://github.com/kanso-labs/actions/compare/v4.5.4...v4.5.5) (2026-11-18)
+
+
+### Dependencies
+
+* update actions/create-github-app-token action to v3.4.0 ([#121](https://github.com/kanso-labs/actions/issues/121)) ([54a8502](https://github.com/kanso-labs/actions/commit/54a850250cdc97bd720ee683b01e1130a17be806))
+
 ## [4.5.4](https://github.com/kanso-labs/actions/compare/v4.5.3...v4.5.4) (2026-11-12)
 
 
