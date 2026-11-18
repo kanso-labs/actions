@@ -50,7 +50,7 @@ jobs:
       # permission, rather than reaching the next step and adding nothing.
       - name: Mint an application token
         id: app-token
-        uses: actions/create-github-app-token@v3.3.0
+        uses: actions/create-github-app-token@v3.4.0
         with:
           client-id: ${{ secrets.client-id }}
           owner: ${{ github.repository_owner }}
