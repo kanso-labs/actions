@@ -14,7 +14,8 @@ them to consume these. A private consumer would need
 | [`lint-workflows`](lint-workflows)                                             | Composite action  | Running actionlint, pinned, in every repository that has workflows               |
 | [`setup-node`](setup-node)                                                     | Composite action  | The Node setup preamble repeated in every Node CI job                            |
 | [`upstream-changelog`](upstream-changelog)                                     | Composite action  | Getting an updated dependency's own release notes into a consumer's changelog    |
-| [`_publish-npm.yaml`](.github/workflows/_publish-npm.yaml)                     | Reusable workflow | Publishing a package to npm and to GitHub Packages, after a release is cut       |
+| [`_publish-npm.yaml`](.github/workflows/_publish-npm.yaml)                     | Reusable workflow | Publishing a released version to npm and to GitHub Packages, from its tag        |
+| [`_check-published.yaml`](.github/workflows/_check-published.yaml)             | Reusable workflow | Opening an issue when a tagged release is missing from a registry                |
 | [`_release-please.yaml`](.github/workflows/_release-please.yaml)               | Reusable workflow | Proposing releases, with a token whose pull requests run CI                      |
 | [`_renovate-command.yaml`](.github/workflows/_renovate-command.yaml)           | Reusable workflow | Answering `@renovate rebase` on a pull request, the way Dependabot does          |
 | [`_dependabot-auto-merge.yaml`](.github/workflows/_dependabot-auto-merge.yaml) | Reusable workflow | Merging Dependabot's minor and patch fixes once checks pass, as Renovate's do    |
@@ -100,49 +101,124 @@ by a rewrite of ours.
 
 ## `_publish-npm.yaml`
 
-Publishes a package once `_release-please.yaml` has cut a release — to npmjs.com
-over trusted publishing, then to GitHub Packages. One call does both.
+Publishes a released version from its tag — to npmjs.com over trusted
+publishing, then to GitHub Packages. One call does both, and a version a
+registry already carries is left alone, so running it twice on the same tag
+publishes once.
+
+Call it from the caller's own `release-please.yaml`, on the tag rather than
+after the run that cut the release:
 
 ```yaml
-publish:
-  name: Publish to npm
-  needs: release-please
-  if:
-    ${{ !cancelled() && needs.release-please.outputs.release_created == 'true'
-    }}
-  permissions:
-    contents: read
-    id-token: write
-    packages: write
-  uses: kanso-labs/actions/.github/workflows/_publish-npm.yaml@v4.2.0
-  with:
-    tag-name: ${{ needs.release-please.outputs.tag_name }}
+on:
+  push:
+    branches:
+      - main
+  release:
+    types:
+      - published
+  schedule:
+    - cron: '15 12 * * *'
+  workflow_dispatch:
+
+concurrency:
+  cancel-in-progress: false
+  group:
+    ${{ github.ref_type == 'tag' && format('publish-{0}', github.ref_name) ||
+    'release-please' }}
+
+jobs:
+  release-please:
+    name: Propose releases
+    if: github.ref_type != 'tag'
+    uses: kanso-labs/actions/.github/workflows/_release-please.yaml@v4.6.0
+    # with and secrets as under _release-please.yaml below
+
+  publish:
+    name: Publish to npm
+    if: github.ref_type == 'tag'
+    permissions:
+      contents: read
+      id-token: write
+      packages: write
+    uses: kanso-labs/actions/.github/workflows/_publish-npm.yaml@v4.6.0
 ```
 
-Compare `release_created` against the string. A bare truthiness test also passes
-on `"false"`, which is what that output carries when release-please runs and
-decides not to cut a release — so the package would be published on every merge.
+That shape is the fix for
+[kanso-labs/actions#123](https://github.com/kanso-labs/actions/issues/123), and
+each part of it is load-bearing:
 
-Keep `!cancelled()` in front of it. release-please cuts releases and then
-updates pull requests in one step, so a failure in the second half fails
-`Propose releases` with the tag already pushed. Without a status function GitHub
-applies `success()` and skips the publish, and a re-run cannot recover it: the
-release half has already relabelled the pull request `autorelease: tagged`, so
-the re-run finds nothing to release. A failed call still hands its outputs to
-the caller, which is what makes `release_created` safe to read after one —
-measured for
-[kanso-labs/unplugin-style-dictionary#425](https://github.com/kanso-labs/unplugin-style-dictionary/issues/425).
+- **It runs on the tag, not after the release.** release-please tags the release
+  pull request's merge commit whichever run cuts the release, but that run's own
+  checkout is whatever commit started it. When a push lands between the release
+  pull request's merge and its run starting — a busy runner, Renovate merging
+  something — the concurrency group drops the merge commit's pending run, and a
+  later run cuts the release from a later checkout. Publishing from that run
+  ships the wrong code under the tagged version; refusing, which is what the old
+  shape did, leaves the version tagged and never published. That happened to
+  daily-core 0.14.0 and 0.18.1. On `release: published` the run's checkout and
+  its `GITHUB_SHA` are the tag's commit, however the release was cut, so npm's
+  provenance attestation names the commit the tarball was built from.
+- **The release fires the event because the application token cuts it.** A
+  release created with `GITHUB_TOKEN` starts no workflow run, so a publishing
+  caller has to pass `client-id` and `private-key` to `_release-please.yaml`,
+  whose releases are then created as the application and do. A caller falling
+  back to `GITHUB_TOKEN` gets no publish at all, and `_check-published.yaml`
+  below is what says so.
+- **It stays in `release-please.yaml`.** npm's trusted publisher names the
+  workflow file allowed to publish, and a package registered against
+  `release-please.yaml` refuses any other. A separate `publish.yaml` would be
+  refused by npm until someone with access to the package re-registered it.
+- **The tag run gets a concurrency group of its own.** In the shared
+  `release-please` group, the tag's run would be one more pending run a push
+  could replace — the same bug again, one step later. Keyed on the tag, two runs
+  for the same version queue behind each other and the second finds it
+  published.
+- **Each job is gated on `github.ref_type`.** A release event and a dispatch on
+  a tag publish, and propose nothing; a push, the schedule and a dispatch on
+  `main` propose, and publish nothing.
 
-Pass `tag-name`, which needs v4.2.0 or later. release-please tags the release
-pull request's merge commit, whichever run cuts the release, while both jobs
-check out the commit of the run that calls them. The two differ when a later run
-cuts the release: the merge commit's run displaced from the caller's concurrency
-queue, or failing before it tagged. Publishing then would ship the later
-commit's code under the tagged version. Given `tag-name`, both jobs refuse
-instead and name both commits, and the version stays tagged and unpublished for
-a person to publish from the tag. Checking out the tag would not be enough: npm
-writes the run's `GITHUB_SHA` into the provenance attestation, which would then
-name a commit the tarball was not built from.
+Do not keep the old `needs: release-please` publish job beside it. Two ways to
+publish the same version race each other, and the one gated on `release_created`
+is exactly the one that misses.
+
+**Recovering a version that did not publish** is one dispatch: Actions, Release
+Please, Run workflow, and pick the tag under "Use workflow from" — or
+`gh workflow run release-please.yaml --ref v1.2.3`. That run is on the tag like
+the release event's, so it publishes whatever a registry is missing and nothing
+else. A tag cut before its repository adopted this shape carries the older
+workflow file, which cannot publish from a tag; publish it by hand, or release a
+new version instead.
+
+**A version older than `latest` does not take `latest`.** `npm publish` moves
+the `latest` dist-tag by default, so recovering an old tag after newer releases
+would point installs back at it. Each job reads the registry's `latest` first: a
+version below it is published under `backport`, a prerelease under `next`, and
+anything else under `latest`. Each job reads its own registry, so a recovery
+that fills in one registry decides from that one alone.
+
+`tag-name` is read from the run's ref when the run is on a tag. Both jobs refuse
+a tag whose commit is not the checkout's, whose version is not `package.json`'s,
+or whose commit is not on the default branch. A run with no tag at all, which is
+a caller still on the older shape that passes no `tag-name`, is checked against
+`v` plus `package.json`'s version, with a warning saying to move to this shape;
+only a dry run goes unchecked.
+
+The default-branch check catches a release made by hand on another branch, which
+fires the same event as release-please's. It does not stop someone with write
+access who means to publish a branch: npm's trusted publisher trusts the
+workflow file, and a branch can change it. A
+[GitHub environment](https://docs.github.com/en/actions/managing-workflow-runs-and-deployments/managing-deployments/managing-environments-for-deployment)
+limited to `v*` tags and named on the trusted publisher is the guard for that,
+and this workflow does not set one yet.
+
+Pass `npm: false` for a package GitHub Packages alone carries, whose
+`publishConfig.registry` points there. The npm job is skipped and the GitHub
+Packages job runs on its own, on whatever `runs-on` names; the npm job always
+runs on `ubuntu-latest`, because npm's trusted publishing and provenance refuse
+a self-hosted runner. Grant the same three scopes anyway: the skipped job still
+declares `id-token: write`, and granting it costs nothing while finding out
+whether GitHub checks a skipped job's scopes would cost a failed publish.
 
 ### Two registries, two jobs, one order
 
@@ -276,7 +352,10 @@ Set it to `false` only for a package with a native dependency to compile.
 | `github-registry-url` | `https://npm.pkg.github.com` | GitHub Packages registry the second job publishes to |
 | `ignore-scripts`      | `true`                       | Pass `--ignore-scripts` to `npm ci` and publish      |
 | `node-version-file`   | `.tool-versions`             | File the Node version is read from                   |
+| `npm`                 | `true`                       | Publish to the public registry; false skips that job |
 | `registry-url`        | `https://registry.npmjs.org` | Public registry to publish to, and to install from   |
+| `runs-on`             | `"ubuntu-latest"`            | What the GitHub Packages job runs on, as JSON        |
+| `tag-name`            | the run's tag                | Tag to publish; read from the ref on a tag run       |
 
 Pass `build-script: ''` for a package with nothing to build; the step is then
 skipped rather than running `npm run` with an empty argument.
@@ -307,9 +386,11 @@ cache costs more than the single install it would save.
 ### Verifying a change to it
 
 `dry-run` runs everything including `npm publish --dry-run`, in both jobs, which
-resolves the manifest and prints the file list without uploading. It cannot be
-exercised in this repository: `package.json` here is `private: true`, and npm
-refuses to publish — even a dry run — for a private package.
+resolves the manifest and prints the file list without uploading. The check for
+a version already on the registry runs and logs its answer, but a dry run skips
+nothing on it, since exercising those steps is the point. It cannot be exercised
+in this repository: `package.json` here is `private: true`, and npm refuses to
+publish — even a dry run — for a private package.
 
 Canary it in a consumer instead, following the recipe in
 [`AGENTS.md`](AGENTS.md). Pick carefully: a consumer with no `@kanso-labs`
@@ -540,17 +621,75 @@ releasing for real has no reason to set it.
 `release_created`, `releases_created`, `paths_released`, `prs`, `tag_name` and
 `version`, passed straight through from the action. `prs` is empty on any run
 that wrote no release pull request, a run that found one already correct
-included — read the auto-merge note above before building on it. A caller that
-publishes on release reads `release_created`, behind `!cancelled()` for the
-reason given under `_publish-npm.yaml` above:
+included — read the auto-merge note above before building on it.
+
+Do not publish from them. A run's `release_created` is true only in the run that
+cut the release, and that run's checkout need not be the tagged commit, which is
+[kanso-labs/actions#123](https://github.com/kanso-labs/actions/issues/123).
+Publish on the tag instead, as `_publish-npm.yaml` above describes.
+
+## `_check-published.yaml`
+
+The alarm for the failure `_publish-npm.yaml` is built against. A version that
+is tagged and never published says nothing on its own: the tag and the GitHub
+release exist, and only the registry is behind. This compares the latest
+releases with the registries once a day, and fails — with an issue in the
+calling repository — when one is missing.
 
 ```yaml
-publish:
-  needs: release-please
-  if:
-    ${{ !cancelled() && needs.release-please.outputs.release_created == 'true'
-    }}
+name: Check published
+
+on:
+  schedule:
+    - cron: '45 13 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Check every release is published
+    permissions:
+      contents: read
+      issues: write
+      packages: read
+    uses: kanso-labs/actions/.github/workflows/_check-published.yaml@v4.6.0
 ```
+
+For each of the latest `releases` releases older than `grace-hours`, it reads
+`package.json` at the tag and asks each registry for that name and version. One
+issue, titled "Tagged releases are missing from the registry", holds the list:
+opened the first time something is missing, rewritten while anything still is,
+and closed once nothing is. Its body carries the `gh workflow run` command that
+publishes each missing tag, which is the recovery `_publish-npm.yaml` describes.
+The title, on an issue `github-actions` opened, is how the next run finds it, so
+leave the title as it is; an issue someone else opens with the same title is
+ignored. A tag that carries no version or a private `package.json` is skipped,
+and a tag whose `package.json` cannot be read is listed in the issue rather than
+stopping the check.
+
+The grace period exists because a release cut on a busy self-hosted runner can
+wait hours for its publish. A missing version younger than that is logged and
+not reported.
+
+It needs no `gh` or `jq`, so it can run on the self-hosted runner too. The issue
+is written with `GITHUB_TOKEN`, so it starts no workflow of its own.
+
+| Input                 | Default                      | Description                                      |
+| --------------------- | ---------------------------- | ------------------------------------------------ |
+| `github-packages`     | `true`                       | Every release has to be on GitHub Packages       |
+| `github-registry-url` | `https://npm.pkg.github.com` | GitHub Packages registry to look in              |
+| `grace-hours`         | `12`                         | How old a release has to be before it is checked |
+| `npm`                 | `true`                       | Every release has to be on the public registry   |
+| `registry-url`        | `https://registry.npmjs.org` | Public registry to look in                       |
+| `releases`            | `5`                          | How many of the latest releases to check         |
+| `runs-on`             | `"ubuntu-latest"`            | What the job runs on, as JSON for `fromJSON()`   |
+| `workflow`            | `release-please.yaml`        | The caller's workflow the recovery command runs  |
+
+It reads the root `package.json` only. A repository releasing several packages
+from one tag stream would need it to read each package's path from
+`release-please-config.json`.
 
 ## `_renovate-command.yaml`
 

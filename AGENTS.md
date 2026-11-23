@@ -191,6 +191,15 @@ bare-repository remote, with lightweight, annotated and prerelease tags. Both
 jobs carry a copy of the check, and the tests hold the two equal, so editing one
 without the other fails.
 
+Its check for a version already on the registry, which is what makes publishing
+a tag safe to repeat, is tested the same way:
+[`tests/publish-npm-already-published.test.mjs`](tests/publish-npm-already-published.test.mjs)
+runs both jobs' copies against a local stand-in registry. So is the alarm:
+[`tests/check-published.test.mjs`](tests/check-published.test.mjs) runs
+`_check-published.yaml`'s script against a stand-in `github` and `fetch`,
+because a tagged and unpublished release is exactly what no pull request here
+can arrange.
+
 **So does the release merge in `_release-please.yaml`.** It decides from a
 commit landing while a release pull request waits, from checks still running,
 and from GitHub refusing a merge, and no pull request here can arrange any of
@@ -297,6 +306,19 @@ production dependencies released at all.
 
 The rule this repository carries is therefore first in `packageRules`, where a
 later rule can still override it for specific packages.
+
+**A version is published from its tag, never from the run that cut it.** The run
+that cuts a release need not be the release commit's own: a push landing while
+that run is pending replaces it in the concurrency group, and the later run's
+checkout is a later commit. Publishing after it either ships the wrong code or,
+with the tag check, nothing at all — kanso-labs/actions#123, three times. So
+callers publish on `release: published` or a dispatch on the tag, from their own
+`release-please.yaml`, which npm's trusted publisher names and which therefore
+cannot move to a file of its own. That run takes a concurrency group keyed on
+the tag, because in the shared group it would be one more pending run a push
+could replace. Do not add a `needs: release-please` publish job back beside it:
+two paths to one version race, and the one gated on `release_created` is the one
+that misses.
 
 **A called workflow cannot request more permissions than its caller granted.**
 Not a silent intersection — the run fails outright with a message naming the

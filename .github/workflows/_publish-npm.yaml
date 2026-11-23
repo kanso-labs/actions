@@ -40,6 +40,14 @@ on:
         description: File the Node version is read from.
         required: false
         type: string
+      npm:
+        default: true
+        description:
+          Whether to publish to the public registry at all. False for a package
+          GitHub Packages alone carries, whose manifest points publishConfig
+          there; the GitHub Packages job then runs on its own.
+        required: false
+        type: boolean
       registry-url:
         default: https://registry.npmjs.org
         description:
@@ -47,14 +55,24 @@ on:
           .npmrc. Both jobs also install from it.
         required: false
         type: string
+      runs-on:
+        default: '"ubuntu-latest"'
+        description:
+          What the GitHub Packages job runs on, as JSON for fromJSON(), either
+          one label as a string or an array of labels. The npm job always runs
+          on ubuntu-latest, because npm's trusted publishing and provenance
+          refuse a self-hosted runner.
+        required: false
+        type: string
       tag-name:
         default: ''
         description:
-          Tag the release was cut at, which is _release-please.yaml's tag_name
-          output. When given, both jobs refuse to publish unless the commit they
+          Tag to publish. Defaults to the run's own ref when the run is on a
+          tag, which is how a caller should run this, on release published. When
+          there is a tag, both jobs refuse to publish unless the commit they
           checked out is the one the tag names and package.json carries the
-          tag's version. Optional only so a dry run with no release behind it
-          can leave it out; a publishing caller should always pass it.
+          tag's version. Empty with no tag only for a dry run with no release
+          behind it.
         required: false
         type: string
 
@@ -78,6 +96,7 @@ jobs:
   # if it succeeded — see the comment there.
   publish:
     name: Publish to npm
+    if: inputs.npm
     permissions:
       contents: read
       id-token: write
@@ -86,56 +105,6 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v7.0.1
-
-      # release-please tags the release pull request's merge commit, whichever
-      # run cuts the release, and the checkout above takes this run's own
-      # commit. The two differ when a later run cuts it: the merge commit's run
-      # displaced from the concurrency group's queue, or failing before it
-      # tagged. Publishing then would ship the later commit's code under the
-      # tagged version, missing from that version's notes.
-      #
-      # Checking out the tag instead is not enough. npm writes GITHUB_SHA into
-      # the provenance attestation, so the attestation would name a commit the
-      # tarball was not built from. So this refuses, and the version stays
-      # tagged and unpublished for a person to publish from the tag.
-      #
-      # The checkout is shallow and fetches no tags, so the tag is resolved on
-      # the remote: the peeled commit for an annotated tag, the tag itself for
-      # a lightweight one, which is what release-please creates. The mirror job
-      # below runs the same check after its own checkout, and
-      # tests/publish-npm-tag-check.test.mjs holds the two copies equal.
-      - name: Check this is the tagged commit
-        if: inputs.tag-name != ''
-        env:
-          TAG_NAME: ${{ inputs.tag-name }}
-        run: |
-          tagged="$(git ls-remote origin "refs/tags/${TAG_NAME}^{}" | cut -f1)"
-          if [[ -z "${tagged}" ]]; then
-            tagged="$(git ls-remote origin "refs/tags/${TAG_NAME}" | cut -f1)"
-          fi
-          if [[ -z "${tagged}" ]]; then
-            echo "::error::Refusing to publish: origin has no tag ${TAG_NAME}."
-            exit 1
-          fi
-
-          head="$(git rev-parse HEAD)"
-          if [[ "${head}" != "${tagged}" ]]; then
-            echo "::error::Refusing to publish: ${TAG_NAME} is at ${tagged}, but this run checked out ${head}."
-            exit 1
-          fi
-
-          if [[ ! "${TAG_NAME}" =~ (^|-)v([0-9]+\.[0-9]+\.[0-9]+.*)$ ]]; then
-            echo "::error::Refusing to publish: ${TAG_NAME} carries no version to compare."
-            exit 1
-          fi
-          tag_version="${BASH_REMATCH[2]}"
-          version="$(node -p 'require("./package.json").version')"
-          if [[ "${version}" != "${tag_version}" ]]; then
-            echo "::error::Refusing to publish: ${TAG_NAME} names ${tag_version}, but package.json carries ${version}."
-            exit 1
-          fi
-
-          echo "Publishing ${version} from ${head}, the commit ${TAG_NAME} names."
 
       # Deliberately not this repository's setup-node, even though
       # these two steps are most of what it does.
@@ -163,86 +132,65 @@ jobs:
           node-version-file: ${{ inputs.node-version-file }}
           registry-url: ${{ inputs.registry-url }}
 
-      # npm ci takes the flag but not a value for it, so the two forms cannot be
-      # collapsed into one interpolated command line.
-      - name: Install dependencies
-        env:
-          IGNORE_SCRIPTS: ${{ inputs.ignore-scripts }}
-        run: |
-          if [[ "${IGNORE_SCRIPTS}" == 'true' ]]; then
-            npm ci --ignore-scripts
-          else
-            npm ci
-          fi
-
-      - name: Run build
-        if: inputs.build-script != ''
-        env:
-          BUILD_SCRIPT: ${{ inputs.build-script }}
-        run: npm run "${BUILD_SCRIPT}"
-
-      # --ignore-scripts here is a different question from the one above, and
-      # the answer happens to be the same. npm runs prepare on publish as well
-      # as on install, so a package whose prepare script downloads a browser
-      # would pay for it a second time here — as a step of the publish itself,
-      # where failing to fetch something aborts a release that has already been
-      # tagged. The build above is what produces the published files.
+      # A caller runs this on release published, or by hand on a tag, so the
+      # checkout above is the tag's own commit and GITHUB_SHA, which npm writes
+      # into the provenance attestation, names the commit the tarball is built
+      # from. release-please tags the release pull request's merge commit
+      # whichever run cuts the release, so that holds however the release was
+      # cut. kanso-labs/actions#123 is what publishing from the run that cut it
+      # cost: a later run cut v0.14.0 of daily-core, its checkout was the later
+      # commit, and nothing ever published it.
       #
-      # Collected into an array rather than interpolated, because npm takes both
-      # of these as flags and neither accepts a value.
-      - name: Publish to npm
-        env:
-          DRY_RUN: ${{ inputs.dry-run }}
-          IGNORE_SCRIPTS: ${{ inputs.ignore-scripts }}
-        run: |
-          set -euo pipefail
-
-          args=()
-          if [[ "${IGNORE_SCRIPTS}" == 'true' ]]; then
-            args+=(--ignore-scripts)
-          fi
-          if [[ "${DRY_RUN}" == 'true' ]]; then
-            args+=(--dry-run)
-          fi
-
-          npm publish "${args[@]}"
-
-  # The same tarball, pushed to GitHub Packages so the organization's own
-  # registry carries every version the public one does.
-  #
-  # It repeats four steps rather than reusing the job above, because the two
-  # differ in the one place that cannot be parameterised: their permissions. A
-  # matrix would collapse the duplication and hand both legs the union of the
-  # scopes, which is the thing the block above refuses to do. A second runner is
-  # cheaper than that.
-  #
-  # needs: publish orders them, and the ordering is the point rather than a side
-  # effect. npm is the source of truth; this is the mirror. If the public
-  # publish fails, both registries stay one version behind, and the next release
-  # — or re-running this job on its own — catches them up together. Without the
-  # edge, a failed npm publish would leave GitHub Packages serving a version
-  # npmjs.com has never heard of, which is the one state a version number cannot
-  # be reasoned about from.
-  publish-github-packages:
-    name: Publish to GitHub Packages
-    needs: publish
-    permissions:
-      contents: read
-      packages: write
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v7.0.1
-
-      # The same check as the job above, for the same reason. needs: publish
-      # already keeps a refused publish from reaching here, but this job is
-      # what re-running it alone runs, so it checks again rather than trust it.
+      # This check is what keeps the older shape honest. A caller that still
+      # calls this from its release-please run on main, with the tag-name that
+      # run cut, can check out a later commit than the tag's, and publishing
+      # then would ship that commit's code under the tagged version. Checking
+      # out the tag instead would not be enough, because GITHUB_SHA would
+      # still name the later commit. So it refuses, and the version is
+      # published by running the caller on the tag.
+      #
+      # A real publish is always checked against a tag. With none given and
+      # the run on a branch, which is a caller still on the older shape that
+      # passes no tag-name, it checks against the tag package.json's version
+      # would have, rather than publishing whatever commit the run is on. Only
+      # a dry run goes unchecked.
+      #
+      # It also refuses a tag that is not on the default branch, which is what
+      # a release made by hand in the UI on another branch looks like: it fires
+      # the same release event as release-please's. This catches a mistake, not
+      # a writer set on publishing a branch, who could edit the caller's own
+      # workflow to publish directly. The default branch comes from the event,
+      # or from the remote's HEAD on an event that carries no repository, and
+      # its history is fetched for the check, unshallowing the checkout.
+      #
+      # The checkout is shallow and fetches no tags, so the tag is resolved on
+      # the remote: the peeled commit for an annotated tag, the tag itself for
+      # a lightweight one, which is what release-please creates. It runs after
+      # Set up Node because it reads package.json with node, which a
+      # self-hosted runner need not carry. The mirror job below runs the same
+      # check at the same point, and tests/publish-npm-tag-check.test.mjs holds
+      # the two copies equal.
       - name: Check this is the tagged commit
-        if: inputs.tag-name != ''
         env:
-          TAG_NAME: ${{ inputs.tag-name }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          DRY_RUN: ${{ inputs.dry-run }}
+          REF_TYPE: ${{ github.ref_type }}
+          TAG_NAME:
+            ${{ inputs.tag-name || (github.ref_type == 'tag' && github.ref_name)
+            || '' }}
         run: |
+          if [[ -z "${TAG_NAME}" ]]; then
+            if [[ "${DRY_RUN}" == 'true' ]]; then
+              echo 'No tag to check, which only a dry run may leave out.'
+              exit 0
+            fi
+            TAG_NAME="v$(node -p 'require("./package.json").version')"
+            echo "::warning::This run is not on a tag and was given no tag-name, so it checks against ${TAG_NAME}, the tag package.json's version would have."
+          fi
+          if [[ "${REF_TYPE}" != 'tag' ]]; then
+            echo "::warning::Publishing ${TAG_NAME} from a run on a branch, which loses the publish whenever another run cuts the release (kanso-labs/actions#123). Run the caller on release published instead, as README.md in kanso-labs/actions shows."
+          fi
+
           tagged="$(git ls-remote origin "refs/tags/${TAG_NAME}^{}" | cut -f1)"
           if [[ -z "${tagged}" ]]; then
             tagged="$(git ls-remote origin "refs/tags/${TAG_NAME}" | cut -f1)"
@@ -269,7 +217,178 @@ jobs:
             exit 1
           fi
 
+          if [[ -z "${DEFAULT_BRANCH}" ]]; then
+            DEFAULT_BRANCH="$(git ls-remote --symref origin HEAD | sed -n 's|^ref: refs/heads/\(.*\)\tHEAD$|\1|p')"
+          fi
+          if [[ -z "${DEFAULT_BRANCH}" ]]; then
+            echo '::error::Refusing to publish: could not tell which branch is the default to check the tag against.'
+            exit 1
+          fi
+          branch="refs/remotes/origin/${DEFAULT_BRANCH}"
+          fetch=(git fetch --quiet --no-tags)
+          if [[ "$(git rev-parse --is-shallow-repository)" == 'true' ]]; then
+            fetch+=(--unshallow)
+          fi
+          "${fetch[@]}" origin "+refs/heads/${DEFAULT_BRANCH}:${branch}"
+          if ! git merge-base --is-ancestor "${head}" "${branch}"; then
+            echo "::error::Refusing to publish: ${TAG_NAME} is at ${head}, which is not on ${DEFAULT_BRANCH}. Only a release cut from ${DEFAULT_BRANCH} publishes."
+            exit 1
+          fi
+
           echo "Publishing ${version} from ${head}, the commit ${TAG_NAME} names."
+
+      # What makes publishing a tag safe to repeat: a re-run, a second run on
+      # the same tag, or a recovery started by hand when only one registry
+      # caught the version. npm refuses to publish a version twice, so without
+      # this a repeat fails rather than doing nothing. Everything after it is
+      # skipped once the version is there.
+      #
+      # It asks the registry for the package's document rather than running
+      # npm view, so it reads no .npmrc and needs neither gh nor jq on a
+      # self-hosted runner. A 404 means the package does not exist yet, which
+      # is an unpublished version too; any other failure stops the job, since
+      # guessing either way is worse than a re-run. The mirror job carries the
+      # same step against GitHub Packages, and
+      # tests/publish-npm-already-published.test.mjs holds the two equal.
+      - name: Check whether this version is already published
+        id: published
+        env:
+          REGISTRY_TOKEN: ''
+          REGISTRY_URL: ${{ inputs.registry-url }}
+        run: |
+          node --input-type=module <<'EOF'
+          import fs from 'node:fs'
+
+          const { name, version } = JSON.parse(fs.readFileSync('package.json', 'utf8'))
+          const registry = process.env.REGISTRY_URL.replace(/\/+$/, '')
+          const headers = { accept: 'application/json', 'cache-control': 'no-cache' }
+          if (process.env.REGISTRY_TOKEN)
+            headers.authorization = `Bearer ${process.env.REGISTRY_TOKEN}`
+
+          let response
+          try {
+            response = await fetch(`${registry}/${name.replace('/', '%2f')}`, { headers })
+          } catch (error) {
+            console.log(`::error::Could not ask ${registry} whether ${name}@${version} is published: ${error.message}`)
+            process.exit(1)
+          }
+
+          let published = false
+          let latest
+          if (response.ok) {
+            const document = await response.json()
+            published = Object.hasOwn(document.versions ?? {}, version.split('+')[0])
+            latest = document['dist-tags']?.latest
+          } else if (response.status !== 404) {
+            console.log(`::error::Could not ask ${registry} whether ${name}@${version} is published: HTTP ${response.status}.`)
+            process.exit(1)
+          }
+
+          // npm publish moves latest unless told otherwise, so a prerelease
+          // goes to next and a version older than latest, which is a recovery
+          // after later releases, goes to backport. npm keeps no build
+          // metadata, so the lookup above drops it.
+          const core = (v) => v.split(/[-+]/)[0].split('.').map(Number)
+          const older = (a, b) => {
+            const [x, y] = [core(a), core(b)]
+            const i = x.findIndex((part, n) => part !== y[n])
+            return i !== -1 && x[i] < y[i]
+          }
+          let distTag = 'latest'
+          if (/-/.test(version.split('+')[0])) distTag = 'next'
+          else if (latest && older(version, latest)) distTag = 'backport'
+
+          if (published)
+            console.log(`::notice::${name}@${version} is already on ${registry}, so this job publishes nothing.`)
+          else
+            console.log(`${name}@${version} is not on ${registry} yet, and publishes under ${distTag}.`)
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `dist-tag=${distTag}\npublished=${published}\n`)
+          EOF
+
+      # npm ci takes the flag but not a value for it, so the two forms cannot be
+      # collapsed into one interpolated command line.
+      - name: Install dependencies
+        if: inputs.dry-run || steps.published.outputs.published != 'true'
+        env:
+          IGNORE_SCRIPTS: ${{ inputs.ignore-scripts }}
+        run: |
+          if [[ "${IGNORE_SCRIPTS}" == 'true' ]]; then
+            npm ci --ignore-scripts
+          else
+            npm ci
+          fi
+
+      - name: Run build
+        if:
+          inputs.build-script != '' && (inputs.dry-run ||
+          steps.published.outputs.published != 'true')
+        env:
+          BUILD_SCRIPT: ${{ inputs.build-script }}
+        run: npm run "${BUILD_SCRIPT}"
+
+      # --ignore-scripts here is a different question from the one above, and
+      # the answer happens to be the same. npm runs prepare on publish as well
+      # as on install, so a package whose prepare script downloads a browser
+      # would pay for it a second time here — as a step of the publish itself,
+      # where failing to fetch something aborts a release that has already been
+      # tagged. The build above is what produces the published files.
+      #
+      # Collected into an array rather than interpolated, because npm takes both
+      # of these as flags and neither accepts a value.
+      - name: Publish to npm
+        if: inputs.dry-run || steps.published.outputs.published != 'true'
+        env:
+          DIST_TAG: ${{ steps.published.outputs.dist-tag }}
+          DRY_RUN: ${{ inputs.dry-run }}
+          IGNORE_SCRIPTS: ${{ inputs.ignore-scripts }}
+        run: |
+          set -euo pipefail
+
+          args=(--tag "${DIST_TAG:-latest}")
+          if [[ "${IGNORE_SCRIPTS}" == 'true' ]]; then
+            args+=(--ignore-scripts)
+          fi
+          if [[ "${DRY_RUN}" == 'true' ]]; then
+            args+=(--dry-run)
+          fi
+
+          npm publish "${args[@]}"
+
+  # The same tarball, pushed to GitHub Packages so the organization's own
+  # registry carries every version the public one does.
+  #
+  # It repeats four steps rather than reusing the job above, because the two
+  # differ in the one place that cannot be parameterised: their permissions. A
+  # matrix would collapse the duplication and hand both legs the union of the
+  # scopes, which is the thing the block above refuses to do. A second runner is
+  # cheaper than that.
+  #
+  # needs: publish orders them, and the ordering is the point rather than a side
+  # effect. npm is the source of truth; this is the mirror. If the public
+  # publish fails, both registries stay one version behind, and the next release
+  # — or re-running this job on its own — catches them up together. Without the
+  # edge, a failed npm publish would leave GitHub Packages serving a version
+  # npmjs.com has never heard of, which is the one state a version number cannot
+  # be reasoned about from.
+  #
+  # The one exception is a caller passing npm: false, for a package GitHub
+  # Packages alone carries. The job above is then skipped, and a skipped need
+  # fails the default success() check, so the condition says which skip is
+  # allowed rather than accepting any.
+  publish-github-packages:
+    name: Publish to GitHub Packages
+    needs: publish
+    if:
+      ${{ !cancelled() && (needs.publish.result == 'success' || (!inputs.npm &&
+      needs.publish.result == 'skipped')) }}
+    permissions:
+      contents: read
+      packages: write
+    runs-on: ${{ fromJSON(inputs.runs-on) }}
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7.0.1
 
       # Points at the public registry and not at GitHub Packages, which is the
       # trap this job is built around rather than an oversight.
@@ -292,7 +411,136 @@ jobs:
           node-version-file: ${{ inputs.node-version-file }}
           registry-url: ${{ inputs.registry-url }}
 
+      # The same check as the job above, for the same reason. needs: publish
+      # already keeps a refused publish from reaching here, but this job is
+      # what re-running it alone runs, so it checks again rather than trust it.
+      - name: Check this is the tagged commit
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          DRY_RUN: ${{ inputs.dry-run }}
+          REF_TYPE: ${{ github.ref_type }}
+          TAG_NAME:
+            ${{ inputs.tag-name || (github.ref_type == 'tag' && github.ref_name)
+            || '' }}
+        run: |
+          if [[ -z "${TAG_NAME}" ]]; then
+            if [[ "${DRY_RUN}" == 'true' ]]; then
+              echo 'No tag to check, which only a dry run may leave out.'
+              exit 0
+            fi
+            TAG_NAME="v$(node -p 'require("./package.json").version')"
+            echo "::warning::This run is not on a tag and was given no tag-name, so it checks against ${TAG_NAME}, the tag package.json's version would have."
+          fi
+          if [[ "${REF_TYPE}" != 'tag' ]]; then
+            echo "::warning::Publishing ${TAG_NAME} from a run on a branch, which loses the publish whenever another run cuts the release (kanso-labs/actions#123). Run the caller on release published instead, as README.md in kanso-labs/actions shows."
+          fi
+
+          tagged="$(git ls-remote origin "refs/tags/${TAG_NAME}^{}" | cut -f1)"
+          if [[ -z "${tagged}" ]]; then
+            tagged="$(git ls-remote origin "refs/tags/${TAG_NAME}" | cut -f1)"
+          fi
+          if [[ -z "${tagged}" ]]; then
+            echo "::error::Refusing to publish: origin has no tag ${TAG_NAME}."
+            exit 1
+          fi
+
+          head="$(git rev-parse HEAD)"
+          if [[ "${head}" != "${tagged}" ]]; then
+            echo "::error::Refusing to publish: ${TAG_NAME} is at ${tagged}, but this run checked out ${head}."
+            exit 1
+          fi
+
+          if [[ ! "${TAG_NAME}" =~ (^|-)v([0-9]+\.[0-9]+\.[0-9]+.*)$ ]]; then
+            echo "::error::Refusing to publish: ${TAG_NAME} carries no version to compare."
+            exit 1
+          fi
+          tag_version="${BASH_REMATCH[2]}"
+          version="$(node -p 'require("./package.json").version')"
+          if [[ "${version}" != "${tag_version}" ]]; then
+            echo "::error::Refusing to publish: ${TAG_NAME} names ${tag_version}, but package.json carries ${version}."
+            exit 1
+          fi
+
+          if [[ -z "${DEFAULT_BRANCH}" ]]; then
+            DEFAULT_BRANCH="$(git ls-remote --symref origin HEAD | sed -n 's|^ref: refs/heads/\(.*\)\tHEAD$|\1|p')"
+          fi
+          if [[ -z "${DEFAULT_BRANCH}" ]]; then
+            echo '::error::Refusing to publish: could not tell which branch is the default to check the tag against.'
+            exit 1
+          fi
+          branch="refs/remotes/origin/${DEFAULT_BRANCH}"
+          fetch=(git fetch --quiet --no-tags)
+          if [[ "$(git rev-parse --is-shallow-repository)" == 'true' ]]; then
+            fetch+=(--unshallow)
+          fi
+          "${fetch[@]}" origin "+refs/heads/${DEFAULT_BRANCH}:${branch}"
+          if ! git merge-base --is-ancestor "${head}" "${branch}"; then
+            echo "::error::Refusing to publish: ${TAG_NAME} is at ${head}, which is not on ${DEFAULT_BRANCH}. Only a release cut from ${DEFAULT_BRANCH} publishes."
+            exit 1
+          fi
+
+          echo "Publishing ${version} from ${head}, the commit ${TAG_NAME} names."
+
+      # The same check as the job above, against GitHub Packages, which
+      # answers only with a token. It is what lets a recovery fill in this
+      # registry alone when npm already has the version.
+      - name: Check whether this version is already published
+        id: published
+        env:
+          REGISTRY_TOKEN: ${{ github.token }}
+          REGISTRY_URL: ${{ inputs.github-registry-url }}
+        run: |
+          node --input-type=module <<'EOF'
+          import fs from 'node:fs'
+
+          const { name, version } = JSON.parse(fs.readFileSync('package.json', 'utf8'))
+          const registry = process.env.REGISTRY_URL.replace(/\/+$/, '')
+          const headers = { accept: 'application/json', 'cache-control': 'no-cache' }
+          if (process.env.REGISTRY_TOKEN)
+            headers.authorization = `Bearer ${process.env.REGISTRY_TOKEN}`
+
+          let response
+          try {
+            response = await fetch(`${registry}/${name.replace('/', '%2f')}`, { headers })
+          } catch (error) {
+            console.log(`::error::Could not ask ${registry} whether ${name}@${version} is published: ${error.message}`)
+            process.exit(1)
+          }
+
+          let published = false
+          let latest
+          if (response.ok) {
+            const document = await response.json()
+            published = Object.hasOwn(document.versions ?? {}, version.split('+')[0])
+            latest = document['dist-tags']?.latest
+          } else if (response.status !== 404) {
+            console.log(`::error::Could not ask ${registry} whether ${name}@${version} is published: HTTP ${response.status}.`)
+            process.exit(1)
+          }
+
+          // npm publish moves latest unless told otherwise, so a prerelease
+          // goes to next and a version older than latest, which is a recovery
+          // after later releases, goes to backport. npm keeps no build
+          // metadata, so the lookup above drops it.
+          const core = (v) => v.split(/[-+]/)[0].split('.').map(Number)
+          const older = (a, b) => {
+            const [x, y] = [core(a), core(b)]
+            const i = x.findIndex((part, n) => part !== y[n])
+            return i !== -1 && x[i] < y[i]
+          }
+          let distTag = 'latest'
+          if (/-/.test(version.split('+')[0])) distTag = 'next'
+          else if (latest && older(version, latest)) distTag = 'backport'
+
+          if (published)
+            console.log(`::notice::${name}@${version} is already on ${registry}, so this job publishes nothing.`)
+          else
+            console.log(`${name}@${version} is not on ${registry} yet, and publishes under ${distTag}.`)
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `dist-tag=${distTag}\npublished=${published}\n`)
+          EOF
+
       - name: Install dependencies
+        if: inputs.dry-run || steps.published.outputs.published != 'true'
         env:
           IGNORE_SCRIPTS: ${{ inputs.ignore-scripts }}
         run: |
@@ -303,7 +551,9 @@ jobs:
           fi
 
       - name: Run build
-        if: inputs.build-script != ''
+        if:
+          inputs.build-script != '' && (inputs.dry-run ||
+          steps.published.outputs.published != 'true')
         env:
           BUILD_SCRIPT: ${{ inputs.build-script }}
         run: npm run "${BUILD_SCRIPT}"
@@ -331,6 +581,7 @@ jobs:
       # publish's correctness does not turn on which repository a context is
       # read from.
       - name: Point npm at GitHub Packages
+        if: inputs.dry-run || steps.published.outputs.published != 'true'
         uses: actions/setup-node@v7.1.0
         with:
           package-manager-cache: false
@@ -347,14 +598,16 @@ jobs:
       # exchange, which is the job above's business — this is the same tarball,
       # attested in the place where attestation is possible.
       - name: Publish to GitHub Packages
+        if: inputs.dry-run || steps.published.outputs.published != 'true'
         env:
+          DIST_TAG: ${{ steps.published.outputs.dist-tag }}
           DRY_RUN: ${{ inputs.dry-run }}
           IGNORE_SCRIPTS: ${{ inputs.ignore-scripts }}
           NODE_AUTH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
 
-          args=()
+          args=(--tag "${DIST_TAG:-latest}")
           if [[ "${IGNORE_SCRIPTS}" == 'true' ]]; then
             args+=(--ignore-scripts)
           fi

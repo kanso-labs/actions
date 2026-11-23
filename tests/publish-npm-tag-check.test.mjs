@@ -67,6 +67,7 @@ const commitVersion = (work, version, message) => {
 describe('the check before publishing', () => {
   let directory
   let clone
+  let shallow
   const commits = {}
 
   before(() => {
@@ -99,23 +100,53 @@ describe('the check before publishing', () => {
     )
     git(work, 'tag', 'lib-v1.0.0-dev.1')
 
+    // A release made by hand on a branch that never reached main.
+    git(work, 'checkout', '-q', '-b', 'side')
+    commits.side = commitVersion(work, '0.3.0', 'feat: never merged')
+    git(work, 'tag', 'v0.3.0')
+    git(work, 'checkout', '-q', 'main')
+
     git(work, 'remote', 'add', 'origin', origin)
-    git(work, 'push', '-q', 'origin', 'main', '--tags')
+    git(work, 'push', '-q', 'origin', 'main', 'side', '--tags')
 
     clone = path.join(directory, 'clone')
     git(directory, 'clone', '-q', origin, clone)
+
+    // A checkout the way actions/checkout makes one: one commit deep, with
+    // no tags and no other branch.
+    shallow = path.join(directory, 'shallow')
+    git(
+      directory,
+      'clone',
+      '-q',
+      '--depth=1',
+      '--no-tags',
+      `file://${origin}`,
+      shallow,
+    )
   })
 
   after(() => {
     fs.rmSync(directory, { force: true, recursive: true })
   })
 
-  const check = (at, tagName, script = checks[0]) => {
-    git(clone, 'checkout', '-q', '--detach', at)
+  const check = (
+    at,
+    tagName,
+    { cwd = clone, env = {}, script = checks[0] } = {},
+  ) => {
+    if (at) git(cwd, 'checkout', '-q', '--detach', at)
     const result = spawnSync('bash', ['-e', '-c', script], {
-      cwd: clone,
+      cwd,
       encoding: 'utf8',
-      env: { ...gitEnv, TAG_NAME: tagName },
+      env: {
+        ...gitEnv,
+        DEFAULT_BRANCH: 'main',
+        DRY_RUN: 'false',
+        REF_TYPE: 'tag',
+        TAG_NAME: tagName,
+        ...env,
+      },
     })
     return { output: result.stdout + result.stderr, status: result.status }
   }
@@ -175,6 +206,83 @@ describe('the check before publishing', () => {
     assert.match(
       output,
       /::error::Refusing to publish: origin has no tag lib-v9\.9\.9\./,
+    )
+  })
+
+  it('refuses a tag on a commit that is not on the default branch', () => {
+    const { output, status } = check(commits.side, 'v0.3.0')
+
+    assert.equal(status, 1)
+    assert.match(
+      output,
+      new RegExp(
+        `::error::Refusing to publish: v0\\.3\\.0 is at ${commits.side}, which is not on main\\.`,
+      ),
+    )
+  })
+
+  it('finds the default branch from a shallow checkout of the tag', () => {
+    const { output, status } = check(null, 'lib-v1.0.0-dev.1', {
+      cwd: shallow,
+    })
+
+    assert.equal(status, 0, output)
+    assert.equal(git(shallow, 'rev-parse', '--is-shallow-repository'), 'false')
+  })
+
+  it('reads the default branch from the remote when the event has none', () => {
+    const { output, status } = check(commits.release, 'v0.2.1', {
+      env: { DEFAULT_BRANCH: '' },
+    })
+    const side = check(commits.side, 'v0.3.0', { env: { DEFAULT_BRANCH: '' } })
+
+    assert.equal(status, 0, output)
+    assert.equal(side.status, 1)
+    assert.match(side.output, /which is not on main\./)
+  })
+
+  it('checks a run with no tag against the tag its version would have', () => {
+    const passes = check(commits.release, '', { env: { REF_TYPE: 'branch' } })
+    const later = check(commits.later, '', { env: { REF_TYPE: 'branch' } })
+
+    assert.equal(passes.status, 0, passes.output)
+    assert.match(passes.output, /::warning::.*checks against v0\.2\.1/)
+    assert.equal(later.status, 1)
+    assert.match(
+      later.output,
+      new RegExp(
+        `::error::Refusing to publish: v0\\.2\\.1 is at ${commits.release}, but this run checked out ${commits.later}\\.`,
+      ),
+    )
+  })
+
+  it('refuses a run with no tag on a commit off the default branch', () => {
+    const { output, status } = check(commits.side, '', {
+      env: { REF_TYPE: 'branch' },
+    })
+
+    assert.equal(status, 1)
+    assert.match(output, /which is not on main\./)
+  })
+
+  it('lets a dry run go with no tag', () => {
+    const { output, status } = check(commits.later, '', {
+      env: { DRY_RUN: 'true', REF_TYPE: 'branch' },
+    })
+
+    assert.equal(status, 0)
+    assert.match(output, /only a dry run may leave out/)
+  })
+
+  it('warns when a tag is published from a run on a branch', () => {
+    const { output, status } = check(commits.release, 'v0.2.1', {
+      env: { REF_TYPE: 'branch' },
+    })
+
+    assert.equal(status, 0)
+    assert.match(
+      output,
+      /::warning::Publishing v0\.2\.1 from a run on a branch/,
     )
   })
 

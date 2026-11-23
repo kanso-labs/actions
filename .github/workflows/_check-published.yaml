@@ -1,0 +1,270 @@
+name: Check published
+
+on:
+  workflow_call:
+    inputs:
+      github-packages:
+        default: true
+        description: Whether every release has to be on GitHub Packages.
+        required: false
+        type: boolean
+      github-registry-url:
+        default: https://npm.pkg.github.com
+        description: GitHub Packages registry to look in.
+        required: false
+        type: string
+      grace-hours:
+        default: 12
+        description:
+          How old a release has to be before a missing version counts, so a
+          publish still queued behind a busy runner is not reported.
+        required: false
+        type: number
+      npm:
+        default: true
+        description:
+          Whether every release has to be on the public registry. False for a
+          package GitHub Packages alone carries.
+        required: false
+        type: boolean
+      registry-url:
+        default: https://registry.npmjs.org
+        description: Public registry to look in.
+        required: false
+        type: string
+      releases:
+        default: 5
+        description:
+          How many of the latest releases to check, at most 100, which is as
+          many as GitHub returns in one page.
+        required: false
+        type: number
+      runs-on:
+        default: '"ubuntu-latest"'
+        description:
+          What the job runs on, as JSON for fromJSON(), either one label as a
+          string or an array of labels.
+        required: false
+        type: string
+      workflow:
+        default: release-please.yaml
+        description:
+          The caller's workflow file that publishes a tag when dispatched on it,
+          named in the issue's recovery command.
+        required: false
+        type: string
+
+# A release that is tagged but never published says nothing on its own: the
+# tag and the GitHub release exist, and only the registry is behind. That is
+# how daily-core 0.14.0 and 0.18.1 went unnoticed (kanso-labs/actions#123).
+# This compares the latest releases with the registries and fails, with an
+# issue in the calling repository, when one is missing.
+#
+# Every caller needs the same three scopes, so they are named here, and a
+# caller that forgets one fails at once with the scope in the message.
+
+jobs:
+  check:
+    name: Check every release is published
+    permissions:
+      contents: read
+      issues: write
+      packages: read
+    runs-on: ${{ fromJSON(inputs.runs-on) }}
+    timeout-minutes: 10
+    steps:
+      # A script rather than gh and jq, because the self-hosted runner some
+      # callers use carries neither. It reads package.json at each tag, so a
+      # renamed package is checked under the name it was released with.
+      #
+      # One issue per repository, found by its title and by github-actions
+      # having opened it, holds the current list: it is opened the first
+      # time something is missing, its body rewritten while anything still is,
+      # and closed once nothing is. Only its own issues count, so a stranger
+      # opening one with the same title on a public repository cannot have this
+      # maintain a body they can edit. Editing the title by hand makes the next
+      # run open another.
+      #
+      # A tag that carries no version, a tag whose package.json cannot be read,
+      # and a private manifest are listed or skipped rather than stopping the
+      # run, so one odd release cannot freeze the issue. Tags are checked
+      # against a stricter version pattern than the publish uses, one that
+      # admits no quote or shell character, before they reach the issue's
+      # shell command. An unscoped package is never looked for on GitHub
+      # Packages, which carries only scoped ones.
+      # tests/check-published.test.mjs runs this against a stand-in github and
+      # registry.
+      - name: Compare the releases with the registries
+        uses: actions/github-script@v9.0.0
+        env:
+          CHECK_GITHUB_PACKAGES: ${{ inputs.github-packages }}
+          CHECK_NPM: ${{ inputs.npm }}
+          GITHUB_PACKAGES_TOKEN: ${{ github.token }}
+          GITHUB_REGISTRY_URL: ${{ inputs.github-registry-url }}
+          GRACE_HOURS: ${{ inputs.grace-hours }}
+          REGISTRY_URL: ${{ inputs.registry-url }}
+          RELEASES: ${{ inputs.releases }}
+          WORKFLOW: ${{ inputs.workflow }}
+        with:
+          script: |
+            const title = 'Tagged releases are missing from the registry'
+            const registries = []
+            if (process.env.CHECK_NPM === 'true')
+              registries.push({ url: process.env.REGISTRY_URL })
+            if (process.env.CHECK_GITHUB_PACKAGES === 'true')
+              registries.push({ url: process.env.GITHUB_REGISTRY_URL, token: process.env.GITHUB_PACKAGES_TOKEN })
+            if (registries.length === 0) {
+              core.setFailed('Neither npm nor github-packages is set, so there is nothing to check.')
+              return
+            }
+
+            const graceMs = Number(process.env.GRACE_HOURS) * 3600 * 1000
+            const { data: releases } = await github.rest.repos.listReleases({
+              ...context.repo,
+              per_page: Math.min(Number(process.env.RELEASES), 100),
+            })
+
+            const documents = new Map()
+            const versions = async ({ url, token }, name) => {
+              const registry = url.replace(/\/+$/, '')
+              const key = `${registry} ${name}`
+              if (!documents.has(key)) {
+                const headers = { accept: 'application/json' }
+                if (token) headers.authorization = `Bearer ${token}`
+                const response = await fetch(`${registry}/${name.replace('/', '%2f')}`, { headers })
+                if (response.status === 404) documents.set(key, {})
+                else if (!response.ok)
+                  throw new Error(`${registry} answered HTTP ${response.status} for ${name}`)
+                else documents.set(key, (await response.json()).versions ?? {})
+              }
+              return documents.get(key)
+            }
+
+            const missing = []
+            const unreadable = []
+            for (const release of releases) {
+              if (release.draft) continue
+              if (!/(^|-)v[0-9]+\.[0-9]+\.[0-9]+[0-9A-Za-z.+-]*$/.test(release.tag_name)) {
+                core.info(`${release.tag_name}: carries no version, so it is not a package release.`)
+                continue
+              }
+              const age = Date.now() - Date.parse(release.published_at ?? release.created_at)
+              if (age < graceMs) {
+                core.info(`${release.tag_name}: released ${Math.round(age / 60000)} minutes ago, inside the grace period.`)
+                continue
+              }
+
+              let manifest
+              try {
+                const { data } = await github.rest.repos.getContent({
+                  ...context.repo,
+                  path: 'package.json',
+                  ref: release.tag_name,
+                })
+                manifest = JSON.parse(Buffer.from(data.content, 'base64').toString('utf8'))
+              } catch (error) {
+                core.warning(`${release.tag_name}: could not read package.json: ${error.message}`)
+                unreadable.push({ reason: error.message, tag: release.tag_name })
+                continue
+              }
+              if (typeof manifest.name !== 'string' || typeof manifest.version !== 'string') {
+                core.warning(`${release.tag_name}: package.json names no package and version.`)
+                unreadable.push({ reason: 'package.json names no package and version', tag: release.tag_name })
+                continue
+              }
+              if (manifest.private === true) {
+                core.info(`${release.tag_name}: package.json is private, so nothing publishes it.`)
+                continue
+              }
+
+              for (const registry of registries) {
+                if (registry.token && !manifest.name.startsWith('@')) continue
+                let found
+                try {
+                  found = Object.hasOwn(await versions(registry, manifest.name), manifest.version.split('+')[0])
+                } catch (error) {
+                  core.setFailed(`Could not check ${release.tag_name}: ${error.message}`)
+                  return
+                }
+                if (found) {
+                  core.info(`${release.tag_name}: ${manifest.name}@${manifest.version} is on ${registry.url}.`)
+                } else {
+                  core.warning(`${release.tag_name}: ${manifest.name}@${manifest.version} is not on ${registry.url}.`)
+                  missing.push({ name: manifest.name, registry: registry.url, tag: release.tag_name, version: manifest.version })
+                }
+              }
+            }
+
+            const issues = await github.paginate(github.rest.issues.listForRepo, {
+              ...context.repo,
+              per_page: 100,
+              state: 'open',
+            })
+            const open = issues.find(
+              (issue) => !issue.pull_request && issue.title === title && issue.user?.login === 'github-actions[bot]',
+            )
+
+            if (missing.length === 0 && unreadable.length === 0) {
+              core.info('Every release checked is published.')
+              if (open) {
+                await github.rest.issues.createComment({
+                  ...context.repo,
+                  body: 'Nothing is missing or unreadable among the releases checked now, so this is closed.',
+                  issue_number: open.number,
+                })
+                await github.rest.issues.update({
+                  ...context.repo,
+                  issue_number: open.number,
+                  state: 'closed',
+                  state_reason: 'completed',
+                })
+                core.info(`Closed #${open.number}.`)
+              }
+              return
+            }
+
+            const repository = `${context.repo.owner}/${context.repo.repo}`
+            const tags = [...new Set(missing.map(({ tag }) => tag))]
+            const body = [
+              ...(missing.length === 0
+                ? []
+                : [
+                    'These releases are tagged, but a registry does not carry their version:',
+                    '',
+                    ...missing.map(({ name, registry, tag, version }) => `- \`${tag}\`: \`${name}@${version}\` is not on ${registry}`),
+                    '',
+                    `To publish one, run \`${process.env.WORKFLOW}\` on its tag: Actions, the workflow, Run workflow, and pick the tag under "Use workflow from". From a terminal:`,
+                    '',
+                    '```sh',
+                    ...tags.map((tag) => `gh workflow run '${process.env.WORKFLOW}' --repo '${repository}' --ref '${tag}'`),
+                    '```',
+                    '',
+                    'Publishing is idempotent, so a registry that already has the version is left alone. A tag cut before its repository published from tags has the older workflow, which cannot publish from a tag: publish it by hand, or let it fall out of the releases this checks once newer ones are out.',
+                    '',
+                  ]),
+              ...(unreadable.length === 0
+                ? []
+                : [
+                    'These releases could not be checked, because their package.json could not be read:',
+                    '',
+                    ...unreadable.map(({ reason, tag }) => `- \`${tag}\`: ${reason}`),
+                    '',
+                  ]),
+              `Opened and kept current by \`_check-published.yaml\` from kanso-labs/actions, which closes this once every release checked is published. Last checked in ${context.serverUrl}/${repository}/actions/runs/${context.runId}.`,
+            ].join('\n')
+
+            if (open) {
+              await github.rest.issues.update({ ...context.repo, body, issue_number: open.number })
+              core.info(`Updated #${open.number}.`)
+            } else {
+              const { data: created } = await github.rest.issues.create({ ...context.repo, body, title })
+              core.info(`Opened #${created.number}.`)
+            }
+            core.setFailed(
+              [
+                missing.length && `${missing.length} release ${missing.length === 1 ? 'version is' : 'versions are'} missing from a registry: ${tags.join(', ')}.`,
+                unreadable.length && `${unreadable.length} could not be checked: ${unreadable.map(({ tag }) => tag).join(', ')}.`,
+              ]
+                .filter(Boolean)
+                .join(' '),
+            )
