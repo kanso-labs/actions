@@ -54,6 +54,7 @@ const release = (version, hours = 48, extra = {}) => ({
 
 const npmjs = 'https://registry.npmjs.org'
 const ghp = 'https://npm.pkg.github.com'
+const origin = (url) => new URL(url).origin
 
 const originalFetch = globalThis.fetch
 const originalEnv = { ...process.env }
@@ -86,8 +87,8 @@ const runStep = async ({
   const fetches = []
   globalThis.fetch = async (url, { headers }) => {
     fetches.push({ authorization: headers.authorization, url })
-    const registry = Object.keys(registries).find((base) =>
-      url.startsWith(base),
+    const registry = Object.keys(registries).find(
+      (base) => origin(url) === origin(base),
     )
     const answer = registries[registry]
     if (typeof answer === 'number') return { ok: false, status: answer }
@@ -245,7 +246,7 @@ describe('checking every release is published', () => {
       registries: { [ghp]: ['1.0.0', '1.1.0'] },
     })
     assert.equal(failed, undefined)
-    assert.ok(fetches.every(({ url }) => url.startsWith(ghp)))
+    assert.ok(fetches.every(({ url }) => origin(url) === origin(ghp)))
   })
 
   it('asks each registry once per package, with the token only for GitHub Packages', async () => {
@@ -361,7 +362,7 @@ describe('checking every release is published', () => {
       },
       registries: {},
     })
-    assert.ok(fetches.every(({ url }) => url.startsWith(npmjs)))
+    assert.ok(fetches.every(({ url }) => origin(url) === origin(npmjs)))
     assert.match(failed, /2 release versions are missing/)
   })
 })
