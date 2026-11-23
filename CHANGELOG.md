@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.6.0](https://github.com/kanso-labs/actions/compare/v4.5.5...v4.6.0) (2026-11-23)
+
+
+### Features
+
+* publish releases from their tag, and alarm when one is unpublished ([#124](https://github.com/kanso-labs/actions/issues/124)) ([281b1a1](https://github.com/kanso-labs/actions/commit/281b1a13b67ca7257ceaa4e6ef8b1818b8a09c14))
+
 ## [4.5.5](https://github.com/kanso-labs/actions/compare/v4.5.4...v4.5.5) (2026-11-18)
 
 
