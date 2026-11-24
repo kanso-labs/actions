@@ -143,6 +143,7 @@ describe('the check before publishing', () => {
         ...gitEnv,
         DEFAULT_BRANCH: 'main',
         DRY_RUN: 'false',
+        GIT_TOKEN: '',
         REF_TYPE: 'tag',
         TAG_NAME: tagName,
         ...env,
@@ -206,6 +207,7 @@ describe('the check before publishing', () => {
 
     assert.equal(status, 0, output)
     assert.match(output, new RegExp(`::add-mask::${credential}`))
+    // The script never prints the token; this guards against an echo added later.
     assert.doesNotMatch(output, /secret-token/)
     const calls = fs.readFileSync(log, 'utf8').trim().split('\n')
     assert.ok(calls.length > 0)
