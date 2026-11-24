@@ -210,7 +210,15 @@ access who means to publish a branch: npm's trusted publisher trusts the
 workflow file, and a branch can change it. A
 [GitHub environment](https://docs.github.com/en/actions/managing-workflow-runs-and-deployments/managing-deployments/managing-environments-for-deployment)
 limited to `v*` tags and named on the trusted publisher is the guard for that,
-and this workflow does not set one yet.
+and this workflow does not set one yet:
+[kanso-labs/actions#126](https://github.com/kanso-labs/actions/issues/126)
+tracks it.
+
+Neither checkout keeps its token. `persist-credentials: false` leaves
+`GITHUB_TOKEN` out of `.git/config`, where `npm ci`'s install scripts and the
+build could read it, and only the tag check, which asks `origin` for the tag and
+fetches the default branch, carries it, for as long as that step's shell lasts.
+A build that runs `git` against `origin` itself would now go without it.
 
 Pass `npm: false` for a package GitHub Packages alone carries, whose
 `publishConfig.registry` points there. The npm job is skipped and the GitHub

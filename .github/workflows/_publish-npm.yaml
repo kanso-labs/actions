@@ -108,9 +108,12 @@ jobs:
       # it. Nothing after the checkout pushes or needs git to authenticate
       # except the tag check below, and on a private repository it must: it
       # asks origin for the tag and fetches the default branch. So that step
-      # alone carries the token, through GIT_CONFIG_* variables that last as
-      # long as its shell, which is the same header actions/checkout would have
-      # written. The mirror job below does the same.
+      # alone carries the token, through GIT_CONFIG_PARAMETERS, which lasts as
+      # long as its shell and carries the same header actions/checkout would
+      # have written. That variable rather than GIT_CONFIG_COUNT, which git
+      # before 2.31 ignores without a word, so a caller's older self-hosted
+      # runner would fail the check with "origin has no tag". The mirror job
+      # below does the same.
       - name: Check out repository
         uses: actions/checkout@v7.0.1
         with:
@@ -192,11 +195,10 @@ jobs:
             || '' }}
         run: |
           if [[ -n "${GIT_TOKEN:-}" ]]; then
-            header="AUTHORIZATION: basic $(printf 'x-access-token:%s' "${GIT_TOKEN}" | base64 | tr -d '\n')"
-            echo "::add-mask::${header#AUTHORIZATION: basic }"
-            export GIT_CONFIG_COUNT=1
-            export GIT_CONFIG_KEY_0="http.${SERVER_URL}/.extraheader"
-            export GIT_CONFIG_VALUE_0="${header}"
+            credential="$(node -p 'Buffer.from(`x-access-token:${process.env.GIT_TOKEN}`).toString("base64")')"
+            echo "::add-mask::${credential}"
+            export GIT_CONFIG_PARAMETERS="'http.${SERVER_URL}/.extraheader=AUTHORIZATION: basic ${credential}'"
+            export GIT_TERMINAL_PROMPT=0
           fi
 
           if [[ -z "${TAG_NAME}" ]]; then
@@ -448,11 +450,10 @@ jobs:
             || '' }}
         run: |
           if [[ -n "${GIT_TOKEN:-}" ]]; then
-            header="AUTHORIZATION: basic $(printf 'x-access-token:%s' "${GIT_TOKEN}" | base64 | tr -d '\n')"
-            echo "::add-mask::${header#AUTHORIZATION: basic }"
-            export GIT_CONFIG_COUNT=1
-            export GIT_CONFIG_KEY_0="http.${SERVER_URL}/.extraheader"
-            export GIT_CONFIG_VALUE_0="${header}"
+            credential="$(node -p 'Buffer.from(`x-access-token:${process.env.GIT_TOKEN}`).toString("base64")')"
+            echo "::add-mask::${credential}"
+            export GIT_CONFIG_PARAMETERS="'http.${SERVER_URL}/.extraheader=AUTHORIZATION: basic ${credential}'"
+            export GIT_TERMINAL_PROMPT=0
           fi
 
           if [[ -z "${TAG_NAME}" ]]; then

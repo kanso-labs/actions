@@ -157,18 +157,31 @@ describe('the check before publishing', () => {
   })
 
   it('leaves no token on disk, in either job', () => {
-    const checkouts = workflow.match(
-      /uses: actions\/checkout@\S+\n\s+with:\n\s+persist-credentials: (\S+)/g,
-    )
-    assert.equal(workflow.match(/uses: actions\/checkout@/g).length, 2)
-    assert.deepEqual(
-      checkouts?.map((step) => step.split(' ').at(-1)),
-      ['false', 'false'],
-    )
+    const checkouts = workflow
+      .split(/\n(?=\s+- name: )/)
+      .filter((step) => /uses: actions\/checkout@/.test(step))
+
+    assert.equal(checkouts.length, 2)
+    for (const step of checkouts)
+      assert.match(step, /\n\s+persist-credentials: false\n/)
+  })
+
+  it('hands both copies the token through the same env', () => {
+    const envs = workflow
+      .split(/\n(?=\s+- name: )/)
+      .filter((step) =>
+        step.includes('- name: Check this is the tagged commit'),
+      )
+      .map((step) => step.slice(0, step.indexOf('run: |')))
+
+    assert.equal(envs.length, 2)
+    assert.equal(envs[1], envs[0])
+    assert.match(envs[0], /GIT_TOKEN: \$\{\{ github\.token \}\}/)
+    assert.match(envs[0], /SERVER_URL: \$\{\{ github\.server_url \}\}/)
   })
 
   it('hands git the token for its own shell, and masks it', () => {
-    // A stand-in git ahead of the real one records the header each call
+    // A stand-in git ahead of the real one records the configuration each call
     // carries, since a local remote ignores http configuration altogether.
     const bin = fs.mkdtempSync(path.join(directory, 'bin-'))
     const log = path.join(bin, 'calls')
@@ -177,7 +190,7 @@ describe('the check before publishing', () => {
     }).trim()
     fs.writeFileSync(
       path.join(bin, 'git'),
-      `#!/usr/bin/env bash\nprintf '%s=%s\\n' "\${GIT_CONFIG_KEY_0-}" "\${GIT_CONFIG_VALUE_0-}" >> '${log}'\nexec '${real}' "$@"\n`,
+      `#!/usr/bin/env bash\nprintf '%s|%s\\n' "\${GIT_CONFIG_PARAMETERS-}" "\${GIT_TERMINAL_PROMPT-}" >> '${log}'\nexec '${real}' "$@"\n`,
       { mode: 0o755 },
     )
     const { output, status } = check(commits.release, 'lib-v0.2.1', {
@@ -187,15 +200,39 @@ describe('the check before publishing', () => {
         SERVER_URL: 'https://github.com',
       },
     })
-    const header = `AUTHORIZATION: basic ${Buffer.from('x-access-token:secret-token').toString('base64')}`
+    const credential = Buffer.from('x-access-token:secret-token').toString(
+      'base64',
+    )
 
     assert.equal(status, 0, output)
-    assert.match(output, new RegExp(`::add-mask::${header.split(' ').at(-1)}`))
+    assert.match(output, new RegExp(`::add-mask::${credential}`))
     assert.doesNotMatch(output, /secret-token/)
     const calls = fs.readFileSync(log, 'utf8').trim().split('\n')
     assert.ok(calls.length > 0)
     for (const call of calls)
-      assert.equal(call, `http.https://github.com/.extraheader=${header}`)
+      assert.equal(
+        call,
+        `'http.https://github.com/.extraheader=AUTHORIZATION: basic ${credential}'|0`,
+      )
+  })
+
+  it('reaches git as configuration git itself reads', () => {
+    const credential = Buffer.from('x-access-token:secret-token').toString(
+      'base64',
+    )
+    const value = execFileSync(
+      'git',
+      ['config', '--get', 'http.https://github.com/.extraheader'],
+      {
+        encoding: 'utf8',
+        env: {
+          ...gitEnv,
+          GIT_CONFIG_PARAMETERS: `'http.https://github.com/.extraheader=AUTHORIZATION: basic ${credential}'`,
+        },
+      },
+    ).trim()
+
+    assert.equal(value, `AUTHORIZATION: basic ${credential}`)
   })
 
   it('passes the commit the tag names', () => {
