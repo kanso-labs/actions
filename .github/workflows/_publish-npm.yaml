@@ -195,7 +195,7 @@ jobs:
             || '' }}
         run: |
           if [[ -n "${GIT_TOKEN:-}" ]]; then
-            credential="$(node -p 'Buffer.from(`x-access-token:${process.env.GIT_TOKEN}`).toString("base64")')"
+            credential="$(node -p 'Buffer.from("x-access-token:" + process.env.GIT_TOKEN).toString("base64")')"
             echo "::add-mask::${credential}"
             export GIT_CONFIG_PARAMETERS="'http.${SERVER_URL}/.extraheader=AUTHORIZATION: basic ${credential}'"
             export GIT_TERMINAL_PROMPT=0
@@ -450,7 +450,7 @@ jobs:
             || '' }}
         run: |
           if [[ -n "${GIT_TOKEN:-}" ]]; then
-            credential="$(node -p 'Buffer.from(`x-access-token:${process.env.GIT_TOKEN}`).toString("base64")')"
+            credential="$(node -p 'Buffer.from("x-access-token:" + process.env.GIT_TOKEN).toString("base64")')"
             echo "::add-mask::${credential}"
             export GIT_CONFIG_PARAMETERS="'http.${SERVER_URL}/.extraheader=AUTHORIZATION: basic ${credential}'"
             export GIT_TERMINAL_PROMPT=0
