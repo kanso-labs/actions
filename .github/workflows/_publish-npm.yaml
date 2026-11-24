@@ -103,8 +103,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      # persist-credentials: false keeps GITHUB_TOKEN out of .git/config, where
+      # every install script npm ci runs, and the build after it, could read
+      # it. Nothing after the checkout pushes or needs git to authenticate
+      # except the tag check below, and on a private repository it must: it
+      # asks origin for the tag and fetches the default branch. So that step
+      # alone carries the token, through GIT_CONFIG_* variables that last as
+      # long as its shell, which is the same header actions/checkout would have
+      # written. The mirror job below does the same.
       - name: Check out repository
         uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
 
       # Deliberately not this repository's setup-node, even though
       # these two steps are most of what it does.
@@ -174,11 +184,21 @@ jobs:
         env:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           DRY_RUN: ${{ inputs.dry-run }}
+          GIT_TOKEN: ${{ github.token }}
           REF_TYPE: ${{ github.ref_type }}
+          SERVER_URL: ${{ github.server_url }}
           TAG_NAME:
             ${{ inputs.tag-name || (github.ref_type == 'tag' && github.ref_name)
             || '' }}
         run: |
+          if [[ -n "${GIT_TOKEN:-}" ]]; then
+            header="AUTHORIZATION: basic $(printf 'x-access-token:%s' "${GIT_TOKEN}" | base64 | tr -d '\n')"
+            echo "::add-mask::${header#AUTHORIZATION: basic }"
+            export GIT_CONFIG_COUNT=1
+            export GIT_CONFIG_KEY_0="http.${SERVER_URL}/.extraheader"
+            export GIT_CONFIG_VALUE_0="${header}"
+          fi
+
           if [[ -z "${TAG_NAME}" ]]; then
             if [[ "${DRY_RUN}" == 'true' ]]; then
               echo 'No tag to check, which only a dry run may leave out.'
@@ -389,6 +409,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
 
       # Points at the public registry and not at GitHub Packages, which is the
       # trap this job is built around rather than an oversight.
@@ -418,11 +440,21 @@ jobs:
         env:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           DRY_RUN: ${{ inputs.dry-run }}
+          GIT_TOKEN: ${{ github.token }}
           REF_TYPE: ${{ github.ref_type }}
+          SERVER_URL: ${{ github.server_url }}
           TAG_NAME:
             ${{ inputs.tag-name || (github.ref_type == 'tag' && github.ref_name)
             || '' }}
         run: |
+          if [[ -n "${GIT_TOKEN:-}" ]]; then
+            header="AUTHORIZATION: basic $(printf 'x-access-token:%s' "${GIT_TOKEN}" | base64 | tr -d '\n')"
+            echo "::add-mask::${header#AUTHORIZATION: basic }"
+            export GIT_CONFIG_COUNT=1
+            export GIT_CONFIG_KEY_0="http.${SERVER_URL}/.extraheader"
+            export GIT_CONFIG_VALUE_0="${header}"
+          fi
+
           if [[ -z "${TAG_NAME}" ]]; then
             if [[ "${DRY_RUN}" == 'true' ]]; then
               echo 'No tag to check, which only a dry run may leave out.'
