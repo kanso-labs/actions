@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.6.1](https://github.com/kanso-labs/actions/compare/v4.6.0...v4.6.1) (2026-11-24)
+
+
+### Bug Fixes
+
+* keep the token off disk in the publish checkout ([#127](https://github.com/kanso-labs/actions/issues/127)) ([abb913a](https://github.com/kanso-labs/actions/commit/abb913ace2229843462358f986bc75eaab543ed1))
+
 ## [4.6.0](https://github.com/kanso-labs/actions/compare/v4.5.5...v4.6.0) (2026-11-23)
 
 
