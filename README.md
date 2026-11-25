@@ -1030,11 +1030,17 @@ pull request at all. So a run of nothing but dependency upgrades released
 nothing, and an upgrade shipped only when a feature happened to land beside it.
 
 Consumers pin exact tags, so an upgrade that cuts no release is one nobody can
-pin. `.github/renovate.json` therefore sets `semanticCommitType: deps`, and
-`release-please-config.json` gives that type a visible **Dependencies** section.
-The section list there replaces release-please's defaults wholesale rather than
-extending them, so dropping `feat` or `fix` from it would silently stop those
-releases too.
+pin. The organization's shared Renovate preset therefore sets
+`semanticCommitType: deps`, and `release-please-config.json` gives that type a
+visible **Dependencies** section. The section list there replaces
+release-please's defaults wholesale rather than extending them, so dropping
+`feat` or `fix` from it would silently stop those releases too.
+
+Everywhere else the preset types an update from Renovate's `github-actions`
+manager `ci` instead, because there a bumped action touches only workflows that
+ship nothing, and `ci` is hidden. Here the workflows and composite actions are
+what consumers pin, so `.github/renovate.json` restates `deps` for that manager:
+an action bump still cuts a release, listed under **Dependencies**.
 
 `ci` is a Conventional Commits type, and it is visible here for the same reason
 `deps` is. The workflows and composite actions in this repository are the thing

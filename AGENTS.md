@@ -108,17 +108,30 @@ section is skipped as "No user facing commits found". Renovate's default,
 release of its own: it shipped only when a feature happened to land beside it,
 and a run of nothing but upgrades published nothing at all.
 
-`.github/renovate.json` therefore sets `semanticCommits: enabled` and
-`semanticCommitScope: null` at the top level, and `semanticCommitType: deps` in
-a `packageRule` rather than beside them. `release-please-config.json` spells out
-`changelog-sections` with `deps` visible under a `Dependencies` heading. The two
-move together: that list replaces release-please's defaults wholesale, so a type
-missing from it is invisible rather than merely unstyled, and `deps` with no
-matching section would put the upgrades back where they started.
+The organization's shared preset, `local>kanso-labs/.github:renovate-config`,
+which `.github/renovate.json` extends, therefore sets `semanticCommits: enabled`
+and `semanticCommitScope: null` at the top level, and `semanticCommitType: deps`
+in a `packageRule` rather than beside them. `release-please-config.json` spells
+out `changelog-sections` with `deps` visible under a `Dependencies` heading. The
+two move together: that list replaces release-please's defaults wholesale, so a
+type missing from it is invisible rather than merely unstyled, and `deps` with
+no matching section would put the upgrades back where they started.
 
 It matters more here than in a repository nothing consumes: consumers pin exact
 tags, so an upgrade that cuts no release is one nobody can pin. See Traps for
 why the type cannot be a top-level key.
+
+**Action bumps here stay `deps`, though the preset types them `ci` everywhere
+else.** The preset's next rule types every update from the `github-actions`
+manager `ci`, which the other repositories hide, because there it touches only
+workflows that ship nothing: a bump of this repository alone once opened a
+release of a component library whose notes said nothing else. Here the workflows
+and composite actions are the product, so the first rule in
+`.github/renovate.json` restates `deps` for that manager, and wins because a
+repository's own rules land after the preset's. `ci` being visible here would
+still release such a bump without it, but under **CI** rather than
+**Dependencies**, and it would stop releasing the day `ci` was hidden again.
+Keep the rule while this repository ships workflows or actions.
 
 `ci` is visible for a related reason. The workflows and composite actions here
 are the thing consumers pin, so a `ci:` commit is usually a change to the
@@ -304,8 +317,9 @@ extends `:semanticPrefixFixDepsChoreOthers`, which sets the type through
 went on writing `chore:` while the setting sat there looking correct, and only
 production dependencies released at all.
 
-The rule this repository carries is therefore first in `packageRules`, where a
-later rule can still override it for specific packages.
+The shared preset therefore carries that rule first in its `packageRules`, where
+a later rule, this repository's own among them, can still override it for
+specific packages.
 
 **A version is published from its tag, never from the run that cut it.** The run
 that cuts a release need not be the release commit's own: a push landing while
