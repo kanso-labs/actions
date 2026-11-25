@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.7.0](https://github.com/kanso-labs/actions/compare/v4.6.1...v4.7.0) (2026-11-25)
+
+
+### Features
+
+* run Renovate on the commenting repository alone ([08d5603](https://github.com/kanso-labs/actions/commit/08d5603246a6440797aa8a007916a0ff426499e0))
+
 ## [4.6.1](https://github.com/kanso-labs/actions/compare/v4.6.0...v4.6.1) (2026-11-24)
 
 
