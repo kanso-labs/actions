@@ -17,6 +17,11 @@
   "minimumReleaseAge": null,
   "packageRules": [
     {
+      "description": "The shared preset types updates from the github-actions manager ci, since everywhere else they touch only scaffolding that ships nothing. Here they are the product: the workflows and composite actions this repository releases are what consumers pin, so a bump of an action they call has to cut a release consumers can pin, and it belongs under Dependencies in the notes, not CI. This restates the preset's deps for that manager, and it wins because a repository's rules land after the preset's. It is first so that the rules below can still override it for specific packages.",
+      "matchManagers": ["github-actions"],
+      "semanticCommitType": "deps"
+    },
+    {
       "automerge": false,
       "description": "lint-workflows carries an -ignore for actionlint's stale report of the code-quality permission scope. The bump that makes it unnecessary is the only moment anybody will think to remove it, so the reminder rides in that pull request rather than sitting in a file nobody reads. This rule follows the automerge one so it wins: the pin moves rarely and the pull request is there to be read.",
       "matchPackageNames": ["rhysd/actionlint"],
