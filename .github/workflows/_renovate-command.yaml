@@ -7,14 +7,20 @@ on:
         default: renovate
         description:
           Name of the repository in this organization holding the scheduled
-          Renovate workflow. A command dispatches that workflow so the request
-          is acted on in about a minute rather than at the next scheduled run.
+          Renovate workflow. A command dispatches that workflow on the calling
+          repository alone, so the request is acted on in about a minute rather
+          than at the next scheduled run, and without a run over every other
+          repository the runner manages.
         required: false
         type: string
       runner-workflow:
         default: renovate.yaml
         description:
-          Filename of the workflow to dispatch inside runner-repository.
+          Filename of the workflow to dispatch inside runner-repository. It has
+          to accept a `repository` workflow_dispatch input naming the one
+          repository to run on, as kanso-labs/renovate's renovate.yaml does;
+          GitHub refuses a dispatch carrying an input the workflow does not
+          declare.
         required: false
         type: string
     secrets:
@@ -160,6 +166,23 @@ jobs:
               ;;
           esac
 
-          gh workflow run "${RUNNER_WORKFLOW}" --repo "${RUNNER_REPOSITORY}"
-          echo "Dispatched ${RUNNER_WORKFLOW} in ${RUNNER_REPOSITORY}."
+          # Narrowed to the repository the comment was typed in. The command is
+          # about one pull request, and a run over every managed repository to
+          # answer it costs minutes on the runner and holds the runner's
+          # concurrency group for all of them. kanso-labs/renovate's runner
+          # checks the name against its config.js and refuses anything else,
+          # so this cannot widen what Renovate acts on there. A full run stays
+          # one Run workflow click away in the runner repository.
+          #
+          # A runner workflow without that input refuses the dispatch outright,
+          # with an "Unexpected inputs" error, so the failure gets a reaction
+          # like every other refusal rather than leaving the 👀 standing. A
+          # ticked rebase checkbox is still read by the next scheduled run.
+          if ! gh workflow run "${RUNNER_WORKFLOW}" --repo "${RUNNER_REPOSITORY}" \
+            --raw-field "repository=${REPOSITORY}"; then
+            react confused
+            echo "::error::Could not dispatch ${RUNNER_WORKFLOW} in ${RUNNER_REPOSITORY}. gh's error is above. The usual causes are a runner workflow without a repository input, a wrong runner-workflow name, and an app without actions: write there."
+            exit 1
+          fi
+          echo "Dispatched ${RUNNER_WORKFLOW} in ${RUNNER_REPOSITORY} on ${REPOSITORY}."
           react rocket
