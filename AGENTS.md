@@ -133,7 +133,7 @@ still release such a bump without it, but under **CI** rather than
 **Dependencies**, and it would stop releasing the day `ci` was hidden again.
 Keep the rule while this repository ships workflows or actions.
 
-`ci` is visible for a related reason. The workflows and composite actions here
+`ci` is visible here for a related reason. The workflows and composite actions
 are the thing consumers pin, so a `ci:` commit is usually a change to the
 product rather than to the scaffolding around it, and hidden it shipped only
 when something else happened to release beside it.
