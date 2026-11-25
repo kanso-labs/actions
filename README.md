@@ -727,18 +727,22 @@ jobs:
       private-key: ${{ secrets.RENOVATE_PRIVATE_KEY }}
 ```
 
-| Comment                                                     | Effect                                                               |
-| ----------------------------------------------------------- | -------------------------------------------------------------------- |
-| `@renovate rebase`, `@renovate retry`, `@renovate recreate` | Ticks the pull request's rebase checkbox, then dispatches the runner |
-| `@renovate run`                                             | Dispatches the runner without touching the pull request              |
+| Comment                                                     | Effect                                                                                  |
+| ----------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `@renovate rebase`, `@renovate retry`, `@renovate recreate` | Ticks the pull request's rebase checkbox, then dispatches the runner on this repository |
+| `@renovate run`                                             | Dispatches the runner on this repository without touching the pull request              |
 
 The three pull request commands are one command under three names, because which
 name is right depends on what Renovate decides to do with the branch, and nobody
 asking for it knows that yet. Renovate's own checkbox says "rebase/retry", and
 it recreates the branch when the rebase is not enough.
 
-The bot reacts as it goes: 👀 accepted, 🚀 dispatched, 😕 refused. A refusal is
-never a failed run, so somebody's typo does not put a red X on the pull request.
+The bot reacts as it goes: 👀 accepted, 🚀 dispatched, 😕 refused. A comment
+that holds no command, or one from somebody without write access, is ignored
+without failing the run, so a stranger's typo does not put a red X on the pull
+request. A command from somebody with access that cannot be carried out — an
+unknown name, a pull request Renovate did not open, a dispatch GitHub refuses —
+does fail it, alongside the 😕.
 
 ### It ticks the box rather than replacing it
 
@@ -747,6 +751,24 @@ to rebase anything itself. It edits the pull request body, turning
 `- [ ] <!-- rebase-check -->` into `- [x] <!-- rebase-check -->` — byte for byte
 what GitHub records when a person clicks that checkbox — and then dispatches the
 runner so Renovate reads it now instead of in three hours.
+
+The dispatch carries the calling repository as the runner workflow's
+`repository` input, so Renovate runs on that repository alone rather than on
+every one it manages. The runner workflow therefore has to declare that input:
+GitHub refuses a dispatch carrying one it does not, and the command fails with
+😕 and the runner never started. `kanso-labs/renovate`'s `renovate.yaml`
+declares it, accepts only a repository listed in its `config.js`, and fails the
+run on any other name — so a calling repository has to be listed there, or the
+command earns its 🚀 and the run it started stops at once.
+
+That run shares the runner's one concurrency group with the scheduled run, so
+the two never race on the same branches. GitHub keeps a single waiting run per
+group, though, so a command queued behind a running one replaces a scheduled run
+already waiting, and the full run comes at the next schedule. Two commands from
+different repositories queued together do the same to each other: the first has
+its 🚀 but its run never starts, and its ticked box waits for the schedule. The
+runner's [README](https://github.com/kanso-labs/renovate#running-it-manually)
+has the detail.
 
 Everything that decides what "rebase" means stays inside Renovate. That is the
 point: the workflow adds a way to ask, not a second implementation of the
