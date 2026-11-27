@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.8.0](https://github.com/kanso-labs/actions/compare/v4.7.0...v4.8.0) (2026-11-27)
+
+
+### Features
+
+* let _publish-npm.yaml run its jobs in a release environment ([#133](https://github.com/kanso-labs/actions/issues/133)) ([0720b21](https://github.com/kanso-labs/actions/commit/0720b21403d91abb0cd38e1d4551f3357aa5bb93))
+
 ## [4.7.0](https://github.com/kanso-labs/actions/compare/v4.6.1...v4.7.0) (2026-11-25)
 
 
