@@ -25,9 +25,10 @@ on:
           GitHub environment both jobs run in, which a caller creates with its
           deployment tags limited to the release tags, so that only a run on one
           of them can publish. Empty runs them in none, which is the default so
-          a caller without the environment keeps working. Pass it on the tag run
-          only, since a dry run on a pull request is not on a tag and the
-          environment would refuse it.
+          a caller without the environment keeps working. Create the environment
+          before passing its name, since naming one that does not exist creates
+          it with no policy. Pass it on the tag run only, since a dry run on a
+          pull request is not on a tag and the policy refuses it.
         required: false
         type: string
       github-registry-url:
