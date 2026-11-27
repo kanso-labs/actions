@@ -19,6 +19,18 @@ on:
           request. Not something a publishing caller should set.
         required: false
         type: boolean
+      environment:
+        default: ''
+        description:
+          GitHub environment both jobs run in, which a caller creates with its
+          deployment tags limited to the release tags, so that only a run on one
+          of them can publish. Empty runs them in none, which is the default so
+          a caller without the environment keeps working. Create the environment
+          before passing its name, since naming one that does not exist creates
+          it with no policy. Pass it on the tag run only, since a dry run on a
+          pull request is not on a tag and the policy refuses it.
+        required: false
+        type: string
       github-registry-url:
         default: https://npm.pkg.github.com
         description:
@@ -97,6 +109,11 @@ jobs:
   publish:
     name: Publish to npm
     if: inputs.npm
+    # An empty name runs the job in no environment at all. Named, the job
+    # waits on the environment's rules, and the OIDC token npm exchanges
+    # carries its name, which is what lets a trusted publisher bound to it
+    # refuse a token minted anywhere else. See README.md.
+    environment: ${{ inputs.environment }}
     permissions:
       contents: read
       id-token: write
@@ -403,6 +420,10 @@ jobs:
     if:
       ${{ !cancelled() && (needs.publish.result == 'success' || (!inputs.npm &&
       needs.publish.result == 'skipped')) }}
+    # The same environment as the job above. GitHub Packages has no trusted
+    # publisher to bind it to, so here it is only the environment's own rule
+    # that a run must be on a release tag.
+    environment: ${{ inputs.environment }}
     permissions:
       contents: read
       packages: write
