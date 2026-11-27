@@ -143,7 +143,8 @@ jobs:
       packages: write
     uses: kanso-labs/actions/.github/workflows/_publish-npm.yaml@v4.8.0
     with:
-      # Once the repository has the environment; see Who can publish below.
+      # Create the environment first, or this creates it unprotected; see Who
+      # can publish below.
       environment: release
 ```
 
@@ -222,9 +223,9 @@ needs a person to approve anything.
 **Only the Kanso Labs application can make a release tag.** The tag ruleset
 `kanso-labs-release-tags` covers `refs/tags/v*` and `refs/tags/*-v*` in every
 repository that tags a release, and refuses creating, moving or deleting such a
-tag to anyone but the application release-please authenticates as. A person
-pushing `v1.2.3` is refused by the push, and a release drafted in the UI on a
-new tag cannot create it. That also means a `kanso-labs` caller of
+tag to anyone but the application release-please authenticates as. A person's
+push of `v1.2.3` is rejected, and a release drafted in the UI on a new tag
+cannot create it. That also means a `kanso-labs` caller of
 `_release-please.yaml` cannot release on the `GITHUB_TOKEN` fallback: the token
 is GitHub Actions, not the application, and the ruleset refuses its tag. Do not
 add GitHub Actions as a bypass actor to fix that — anyone who can push a
@@ -242,13 +243,18 @@ anyway.
 A job in the environment gets an OIDC token naming it, and a trusted publisher
 bound to `release` on npmjs.com refuses a token without it, so a branch that
 rewrites the workflow to publish from somewhere else is refused by the registry,
-not just by this workflow.
+not just by this workflow. Binding it is done on the package's page, under
+Settings, Trusted publishing, by an owner of the package.
+
+GitHub Packages has no such check. Its job runs in the environment only because
+the caller's workflow names it, and `GITHUB_TOKEN` with `packages: write` is all
+it needs, so a branch that rewrites the workflow to drop `environment:` can
+still publish there. Against that, only npmjs.com is guarded.
 
 The two guards only hold together. The environment checks a tag's name and
 nothing else, so on its own anyone who could push `v9.9.9` at a commit of their
 choosing could publish it; the ruleset is what makes a release tag one only the
-application made. Binding it is done on the package's page, under Settings,
-Trusted publishing, by an owner of the package.
+application made.
 
 `environment` defaults to empty, which runs both jobs in no environment, so a
 caller without one keeps working. Turn it on in this order, because a publisher
@@ -479,7 +485,8 @@ place.
 Inside `kanso-labs` the fallback opens the pull request but cannot cut the
 release: the release-tag ruleset lets only the application create a `v*` or
 `*-v*` tag, so creating the tag is refused, on that run and every later one,
-until the application is installed. See [Who can publish](#who-can-publish).
+until the application is installed and the caller passes `client-id` and
+`private-key`. See [Who can publish](#who-can-publish).
 
 **There is no `app-id` input.** Both workflows took one as a deprecated alias
 through v1.x and dropped it in v2.0.0, which is what makes v2 a major. A caller
