@@ -504,7 +504,7 @@ nothing is tagged. The next push to the default branch, whenever that happens
 and whatever it is for, cuts the tag late — so on a quiet repository the
 released version spends an unbounded stretch being one that nobody can pin. A
 person's merge starts the run immediately, so the fallback leaves the merge to
-them.
+them. Inside `kanso-labs` even that run cannot tag, as above.
 
 A repository whose ruleset requires status checks cannot really use the fallback
 at all: the release pull request never starts the checks it is required to pass,

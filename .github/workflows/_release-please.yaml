@@ -111,7 +111,7 @@ jobs:
       - name: Warn that no application token was supplied
         if: env.CLIENT_ID == ''
         run: |
-          echo '::warning::No client-id secret was supplied, so this run used GITHUB_TOKEN. Its release pull request will not start any workflow runs, so required checks never report on it, and auto-merge is disabled below because merging it as the token would leave the release half-cut. Merge it yourself — a push by a human does trigger the run that tags it. Installing a GitHub App and passing client-id and private-key removes all of this.'
+          echo '::warning::No client-id secret was supplied, so this run used GITHUB_TOKEN. Its release pull request will not start any workflow runs, so required checks never report on it, and auto-merge is disabled below because merging it as the token would leave the release half-cut. Merge it yourself — a push by a human does trigger the run that tags it. Installing a GitHub App and passing client-id and private-key removes all of this. In kanso-labs it is required: the release-tag ruleset lets only the Kanso Labs application create a release tag, so this token cannot cut the release at all.'
 
       # A skipped step's outputs are empty strings, so this falls through to
       # the default token whenever the application token was not minted.
