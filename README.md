@@ -131,7 +131,7 @@ jobs:
   release-please:
     name: Propose releases
     if: github.ref_type != 'tag'
-    uses: kanso-labs/actions/.github/workflows/_release-please.yaml@v4.6.0
+    uses: kanso-labs/actions/.github/workflows/_release-please.yaml@v4.8.0
     # with and secrets as under _release-please.yaml below
 
   publish:
@@ -141,7 +141,10 @@ jobs:
       contents: read
       id-token: write
       packages: write
-    uses: kanso-labs/actions/.github/workflows/_publish-npm.yaml@v4.6.0
+    uses: kanso-labs/actions/.github/workflows/_publish-npm.yaml@v4.8.0
+    with:
+      # Once the repository has the environment; see Who can publish below.
+      environment: release
 ```
 
 That shape is the fix for
@@ -206,13 +209,53 @@ only a dry run goes unchecked.
 
 The default-branch check catches a release made by hand on another branch, which
 fires the same event as release-please's. It does not stop someone with write
-access who means to publish a branch: npm's trusted publisher trusts the
-workflow file, and a branch can change it. A
-[GitHub environment](https://docs.github.com/en/actions/managing-workflow-runs-and-deployments/managing-deployments/managing-environments-for-deployment)
-limited to `v*` tags and named on the trusted publisher is the guard for that,
-and this workflow does not set one yet:
-[kanso-labs/actions#126](https://github.com/kanso-labs/actions/issues/126)
-tracks it.
+access who means to publish: npm's trusted publisher trusts the workflow file,
+and a branch can change it. Two settings outside this workflow are the guard for
+that, and the next section is about them.
+
+### Who can publish
+
+[kanso-labs/actions#126](https://github.com/kanso-labs/actions/issues/126) put
+two guards in front of a release, one on the tag and one on the publish. Neither
+needs a person to approve anything.
+
+**Only the Kanso Labs application can make a release tag.** The organization
+ruleset `kanso-labs-release-tags` covers `refs/tags/v*` and `refs/tags/*-v*` in
+every repository, and refuses creating, moving or deleting such a tag to anyone
+but the application release-please authenticates as. A person pushing `v1.2.3`
+is refused by the push, and a release drafted in the UI on a new tag cannot
+create it. That also means a `kanso-labs` caller of `_release-please.yaml`
+cannot release on the `GITHUB_TOKEN` fallback: the token is GitHub Actions, not
+the application, and the ruleset refuses its tag. Do not add GitHub Actions as a
+bypass actor to fix that — anyone who can push a workflow could then tag.
+Install the application instead.
+
+**Only a run on a release tag can publish.** Each publishing repository has an
+environment named `release` whose deployment tags are limited to its release
+tags, `v*`, or `<component>-v*` for a repository that tags per component.
+Passing `environment: release` runs both jobs in it, so a run on a branch, or a
+dispatch on anything but such a tag, is refused before it checks anything out.
+It has no required reviewer, deliberately: that would put a person back in the
+path of every release, and a private repository on GitHub Team cannot have one
+anyway.
+
+The environment is what the npm half really rests on. A job in it gets an OIDC
+token naming the environment, and a trusted publisher bound to `release` on
+npmjs.com refuses a token without it, so a branch that rewrites the workflow to
+publish from somewhere else is refused by the registry, not just by this
+workflow. Binding it is done on the package's page, under Settings, Trusted
+publishing, by an owner of the package.
+
+`environment` defaults to empty, which runs both jobs in no environment, so a
+caller without one keeps working. Turn it on in this order, because a publisher
+bound to an environment refuses every run outside it:
+
+1. Create the `release` environment in the repository, with its deployment tags.
+2. Pass `environment: release` on the tag run, and let a release go through.
+3. Bind the trusted publisher to `release`.
+
+Pass it on the tag run only. A dry run on a pull request is on a branch, and the
+environment would refuse it.
 
 Neither checkout keeps its token. `persist-credentials: false` leaves
 `GITHUB_TOKEN` out of `.git/config`, where `npm ci`'s install scripts and the
@@ -357,6 +400,7 @@ Set it to `false` only for a package with a native dependency to compile.
 | --------------------- | ---------------------------- | ---------------------------------------------------- |
 | `build-script`        | `build`                      | npm script producing what is published               |
 | `dry-run`             | `false`                      | Publish with `--dry-run`, uploading nothing          |
+| `environment`         | empty                        | Environment both jobs run in; empty runs in none     |
 | `github-registry-url` | `https://npm.pkg.github.com` | GitHub Packages registry the second job publishes to |
 | `ignore-scripts`      | `true`                       | Pass `--ignore-scripts` to `npm ci` and publish      |
 | `node-version-file`   | `.tool-versions`             | File the Node version is read from                   |
@@ -421,6 +465,10 @@ Both `client-id` and `private-key` are optional. Without them the run falls back
 to `GITHUB_TOKEN`, warns in the job log, and still opens a correct release pull
 request — it just has to be merged by a person. That fallback is what lets a
 repository adopt this workflow before its secrets are in place.
+
+Inside `kanso-labs` the fallback opens the pull request but cannot cut the
+release: the organization's release-tag ruleset lets only the application create
+a `v*` tag, so the tag push is refused. See [Who can publish](#who-can-publish).
 
 **There is no `app-id` input.** Both workflows took one as a deprecated alias
 through v1.x and dropped it in v2.0.0, which is what makes v2 a major. A caller
